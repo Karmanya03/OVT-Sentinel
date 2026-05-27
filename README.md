@@ -12,145 +12,161 @@
    <img src="https://img.shields.io/badge/tests-pytest-yellow" alt="tests" />
 </p>
 
-<p align="center">AI-powered Discord bot for Overthrone (OVT) Active Directory testing. It connects to your attack VM over WebSocket, streams OVT commands, watches system resources and loot, and brings an AI red team brain that does not spill coffee on your keyboard. Mostly.</p>
+<p align="center">AI-powered Discord bot for Overthrone (OVT) Active Directory testing. Invite the bot, run an agent on your Kali VM, and control everything from Discord.</p>
 
 <p align="center">
-   <a href="#why-this-exists-short-version">What is this</a>
-   · <a href="#quick-start">Install</a>
-   · <a href="#">Wordlists</a>
+   <a href="#get-started">Get Started</a>
    · <a href="#discord-commands">Commands</a>
-   · <a href="#">Auto-Pwn Usage</a>
-   · <a href="#architecture-neat-with-arrows">Architecture</a>
-   · <a href="#what-it-does-without-the-hype">Features</a>
-   · <a href="#">Examples</a>
-   · <a href="#faq-funnier-helpful-slightly-unhinged">FAQ</a>
+   · <a href="#architecture">Architecture</a>
+   · <a href="#what-it-does">Features</a>
+   · <a href="#faq">FAQ</a>
 </p>
 
-## Why This Exists (Short Version)
+## Get Started
 
-- You want to run OVT from Discord like a very calm villain.
-- You want logs, loot, and live status without 17 terminals.
-- You want an AI helper that is fast, cheap, and only a little sarcastic.
+### 1. Invite the Bot
 
-## Architecture (Neat, With Arrows)
+Click the invite link → pick your server → done.
 
-```text
-                +---------------------+
-                |    Discord Client   |
-                +---------------------+
-                          |
-                          | Slash Commands
-                          v
-                +---------------------+
-                |    sentinel-bot     |
-                |      (Python)       |
-                +---------------------+
-                   |        |        |
-                   |        |        +---------------------+
-                   |        |                              |
-                   |        v                              v
-                   |  +---------------------+     +---------------------+
-                   |  | SQLite Session      |     | LLM Brain            |
-                   |  | Memory              |     | (Gemini/Groq/etc.)   |
-                   |  +---------------------+     +---------------------+
-                   |
-                   | WebSocket
-                   v
-                +---------------------+
-                |   sentinel-agent    |
-                |       (Rust)        |
-                +---------------------+
-                   |              |
-                   |              +---------------------+
-                   v                                    v
-         +---------------------+              +---------------------+
-         |   System Monitor    |              |    Loot Watcher     |
-         +---------------------+              +---------------------+
-                   |
-                   v
-         +---------------------+
-         |   Overthrone (OVT)   |
-         +---------------------+
+```
+https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=1099858774022&scope=bot
 ```
 
-## Quick Start
+No Discord app creation, no hosting, no config.
 
-### 1) sentinel-agent (Attack VM)
+### 2. Install Rust + Build the Agent
+
+Pick your platform and run the one-liner on your attack VM:
+
+<details>
+<summary><b>Linux (Kali/Ubuntu/Debian)</b></summary>
 
 ```bash
-cd sentinel-agent
-cargo build --release
-sudo cp target/release/sentinel-agent /usr/local/bin/
-
-# Run (plain WebSocket)
-sentinel-agent --bind 0.0.0.0:7331 --token "your-secure-token-here"
-
-# Run (with TLS)
-sentinel-agent --bind 0.0.0.0:7331 --tls --tls-cert cert.pem --tls-key key.pem --token "..."
+curl -sSf https://sh.rustup.rs | sh -s -- -y && source "$HOME/.cargo/env" && git clone https://github.com/Karmanya03/OVT-Sentinel && cd OVT-Sentinel/sentinel-agent && cargo build --release
 ```
+</details>
 
-### 2) sentinel-bot (Your Machine)
+<details>
+<summary><b>macOS</b></summary>
 
 ```bash
-cd sentinel-bot
-pip install -r requirements.txt
-
-# Edit .env with your API keys
-cp .env.example .env
-# Set: DISCORD_TOKEN, GEMINI_API_KEY (or GROQ_API_KEY), AGENT_WS, SENTINEL_TOKEN
-# (If .env is missing, it is auto-created from .env.example on first run)
-
-python main.py
+curl -sSf https://sh.rustup.rs | sh -s -- -y && source "$HOME/.cargo/env" && git clone https://github.com/Karmanya03/OVT-Sentinel && cd OVT-Sentinel/sentinel-agent && cargo build --release
 ```
+</details>
 
-### 3) Docker (Because Buttons)
+<details>
+<summary><b>Windows (PowerShell)</b></summary>
+
+```powershell
+winget install Rustlang.Rustup; git clone https://github.com/Karmanya03/OVT-Sentinel; Set-Location OVT-Sentinel\sentinel-agent; cargo build --release
+```
+</details>
+
+### 3. Run the Agent
 
 ```bash
-cd sentinel-bot
-docker build -t sentinel-bot .
-docker run --env-file ../.env sentinel-bot
+# Linux / macOS
+./target/release/sentinel-agent --bind 0.0.0.0:7331 --token "your-secure-token"
+
+# Windows
+.\target\release\sentinel-agent.exe --bind 0.0.0.0:7331 --token "your-secure-token"
 ```
 
-## What It Does (Without the Hype)
+### 4. Connect in Discord
 
-- Streams OVT commands and output line by line.
-- Keeps a session memory so you do not forget the chaos you created.
-- Monitors VM health (CPU/RAM/disk/network) so your laptop does not cosplay a toaster.
-- Watches loot folders and lets you browse or read files from Discord.
-- Adds AI guidance for analysis, next steps, and mistakes.
+```
+/agent connect ws://your-vm-ip:7331
+```
+
+That's it. All commands now route to **your** VM.
+
+---
 
 ## Discord Commands
 
-| Command | Description |
-|---------|-------------|
-| `/info` | Show bot information, version, credits & quick links |
-| `/help [category]` | Show detailed help for all commands |
-| `/run <command>` | Run any OVT command with auto-AI analysis |
-| `/stream <command>` | Live line-by-line output streaming |
-| `/doctor` | Run `ovt doctor` health check |
-| `/kill <id>` | Kill a running command |
-| `/status` | VM CPU/RAM/disk/network status |
-| `/loot` | Browse loot directory (paginated) |
-| `/readloot <path>` | Read a loot file |
-| `/session` | Show current session summary |
-| `/log` | Show recent events |
-| `/history` | Show command history |
-| `/ask <question>` | Chat with the AD expert AI |
-| `/analyze <command> <output>` | Paste OVT output for AI review |
-| `/path <source> <target>` | Find attack path in graph |
-| `/suggest` | Ask AI for the best next move |
-| `/mistakes` | Review session mistakes |
-| `/bloodhound <file>` | Analyze BloodHound JSON with AI |
-| `/screenshot [analyze]` | VM screenshot with optional AI vision analysis |
-| `/search <query>` | Search the web for vulnerabilities/exploits |
-| `/kerberoast` | Kerberoasting shortcut |
-| `/spray <password>` | Password spray with lockout check |
-| `/adcs-scan` | ADCS vulnerability scan shortcut |
-| `/crack <hashfile>` | Crack hashes from loot dir |
+| Category | Command | Description |
+|----------|---------|-------------|
+| **Agent** | `/agent connect <ws_url>` | Connect your attack VM to the bot |
+| | `/agent disconnect` | Remove your VM from the bot |
+| | `/agent status` | Check your agent connection status |
+| | `/agent list` | Show your registered agents |
+| **Info** | `/info` | Bot info, version & credits |
+| | `/help [category]` | Detailed command reference |
+| **Session** | `/session-start` | Start a session in a dedicated thread |
+| | `/session-end` | End session & archive thread |
+| | `/resume` | Resume session in current thread |
+| | `/chat <message>` | Chat with the AI |
+| | `/set <dc> <domain> <user> <pass>` | Set session targets (ephemeral) |
+| | `/session` | Show session summary |
+| **Attack** | `/run <command>` | Run any OVT command |
+| | `/stream <command>` | Live streaming output |
+| | `/doctor` | Run `ovt doctor` health check |
+| | `/kill <id>` | Kill a running command |
+| | `/enum-all` | Full AD enumeration |
+| | `/kerberoast` | Kerberoasting |
+| | `/spray <password>` | Password spray with lockout check |
+| | `/adcs-scan` | ADCS vulnerability scan |
+| | `/dump` | DCSync credential extraction |
+| | `/crack <hashfile>` | Crack hashes from loot |
+| **Monitor** | `/status` | VM CPU/RAM/disk/network status |
+| | `/loot` | Browse loot files (paginated) |
+| | `/readloot <path>` | Read a loot file |
+| | `/screenshot [analyze]` | Screenshot with optional AI vision |
+| | `/browse <url>` | Open URL in VM browser |
+| **AI** | `/ask <question>` | Ask about AD pentesting |
+| | `/analyze <cmd> <output>` | Paste OVT output for AI review |
+| | `/suggest` | AI suggests the next best move |
+| | `/mistakes` | AI critiques your session |
+| | `/path <source> <target>` | Attack path analysis |
+| | `/bloodhound <file>` | BloodHound JSON analysis |
+| **Utilities** | `/search <query>` | Web search for vulns/exploits |
+| | `/cve <product>` | CVE lookup for Windows Server |
+| | `/log` | Recent Sentinel events |
+| | `/history` | Session command history |
+
+## Architecture
+
+```text
+                     One bot, many agents
+
+        +---------------------+
+        |    Discord Client   |
+        +---------------------+
+                  |
+                  | Slash Commands
+                  v
+        +---------------------+
+        |    sentinel-bot     |
+        |   (hosted once)     |
+        +---------------------+
+         |      |       |    
+         |      |       +-- PostgreSQL
+         |      |           (sessions, agents,
+         |      |            chat history)
+         |      |
+         |      +-- LLM Brain (Gemini / Groq /
+         |           OpenAI / SambaNova / Ollama)
+         |
+    ┌────┴────┬────┬────┐    WebSocket (per user)
+   Agent A  Agent B  Agent C  ...
+   (user1)  (user2)  (user3)
+      |        |        |
+   Kali VM  Kali VM  Kali VM
+```
+
+## What It Does
+
+- **One bot, shared by everyone** — invite once, no app creation per user
+- **Per-user agent** — each user registers their own Kali VM via `/agent connect`
+- **OVT command execution** — run Overthrone attacks from Discord
+- **Live streaming** — see command output in real-time
+- **Thread-based sessions** — dedicated workspace per session
+- **AI chat + analysis** — multi-provider LLM with agentic tool calling
+- **VM monitoring** — CPU, RAM, disk, processes from Discord
+- **Loot management** — browse, read, and analyze collected files
+- **Screenshots + browser** — see what's on the VM screen
 
 ## LLM Providers (Free Tier)
-
-Set `LLM_PROVIDER` in `.env` to choose:
 
 | Provider | API Key Env Var | Model | Free Tier |
 |----------|----------------|-------|-----------|
@@ -161,20 +177,16 @@ Set `LLM_PROVIDER` in `.env` to choose:
 | **OpenAI** | `OPENAI_API_KEY` | `gpt-4o-mini` | Paid |
 | **Ollama** (local) | — | `llama3.1:70b` | Free, local |
 
-## Security (Yes, It Has That)
+## Security
 
-- Token-authenticated WebSocket between bot and agent.
-- TLS support for encrypted connections (`wss://`).
-- Discord user/guild/channel allowlists.
-- Destructive command confirmation buttons.
-- No shell injection (process spawning uses argument arrays).
-- Config validation on startup with fast, loud errors.
-- Token bucket rate limiter per user (10 req/sec default).
-- Automatic findings logging (Krb hashes, NTLM hashes, ADCS vulns, delegation).
-- Web search + fetch for live vulnerability research.
-- AI vision screenshot analysis (Gemini).
-- Built-in CVE database for WS 2019/2022/2025.
-- Traditional tool knowledge (Mimikatz, Impacket, BloodHound, Certipy, etc.).
+- Token-authenticated WebSocket between bot and agent
+- TLS support for encrypted connections (`wss://`)
+- All agent commands are ephemeral (only you see them)
+- Destructive command confirmation buttons
+- No shell injection (process spawning uses argument arrays)
+- Rate limiter per user (10 req/sec default)
+- Web search + fetch for live vulnerability research
+- AI vision screenshot analysis (Gemini)
 
 ## Testing
 
@@ -184,37 +196,33 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-## FAQ (Funnier, Helpful, Slightly Unhinged)
+```bash
+cd sentinel-agent
+cargo test
+```
 
-**Q: Is this a bot, an agent, or a tiny gremlin?**
-A: Yes. The bot handles Discord, the agent lives on the VM, and the gremlin is the thing that renames your log files when you're not looking.
+## FAQ
+
+**Q: Do I need to host the bot?**
+A: No. Someone already hosts it. Just invite it to your server and connect your VM with `/agent connect`.
+
+**Q: Do I need a Discord Developer account?**
+A: No. The bot is already created. You just need the invite link.
 
 **Q: Do I need paid LLMs?**
-A: Not at all. Free tiers work fine. Paid LLMs = better jokes and fewer 'are you sure?' moments.
+A: No. Free tiers work fine (Gemini, Groq, SambaNova, Cerebras).
 
-**Q: Why are there two components?**
-A: Division of labor. `sentinel-bot` talks to Discord and humans. `sentinel-agent` runs on the VM and whispers to OVT. Keeps responsibilities tidy and blame traceable.
+**Q: Is this a bot, an agent, or a tiny gremlin?**
+A: Yes. The bot handles Discord, the agent lives on your VM, and the gremlin is the thing that renames your log files when you're not looking.
 
 **Q: Will this run random shell commands and fry my box?**
-A: No randomness. Commands are spawned with safe arg arrays. It will not summon a dragon unless you explicitly type `/run dragon --force`.
-
-**Q: Can I run this on Windows or my toaster?**
-A: `sentinel-bot` is Python — it runs on Windows, macOS, Linux. `sentinel-agent` is Rust — target your VM OS. Toaster support is experimental.
+A: No randomness. Commands are spawned with safe arg arrays. Destructive operations need your explicit confirmation.
 
 **Q: Is this legal?**
-A: This tool is for authorized testing only. Use responsibly. If you're unsure, ask your lawyer or the nearest ethics committee (or both).
-
-**Q: Where are logs and loot stored?**
-A: Loot and logs live on the agent's `loot/` and `logs/` directories by default. Check the agent config or `/readloot` if you prefer Discord drama over file browsing.
-
-**Q: Can the AI take actions on its own?**
-A: No. The AI suggests and explains. You click the buttons. You remain the decision-maker and the person to blame.
+A: This tool is for authorized testing only. Use responsibly.
 
 **Q: How do I contribute?**
 A: Fork, make a PR, add tests, and write clever commit messages. Bonus points for ASCII art and unit tests that include bad puns.
-
-**Q: I broke something—real panic level.**
-A: Step 1: breathe. Step 2: run `/doctor`. Step 3: check `sentinel-agent` logs. Step 4: blame the gremlin, then fix it.
 
 **Q: Any tips for keeping my VM alive?**
 A: Don't run multiple `/enum-all` commands in a row. Give your VM water, CPU breaks, and dignity.
