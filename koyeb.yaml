@@ -13,20 +13,10 @@ services:
     envs:
       - key: SENTINEL_DATA_DIR
         value: /app/data
-      - key: DISCORD_TOKEN
-        value: ""
       - key: AGENT_WS
         value: ws://127.0.0.1:7331
-      - key: SENTINEL_TOKEN
-        value: ""
       - key: LLM_PROVIDER
         value: gemini
-      - key: GEMINI_API_KEY
-        value: ""
-      - key: GROQ_API_KEY
-        value: ""
-      - key: OPENAI_API_KEY
-        value: ""
       - key: USE_AGENT_TOOLS
         value: "true"
       - key: USE_WEB_SEARCH
