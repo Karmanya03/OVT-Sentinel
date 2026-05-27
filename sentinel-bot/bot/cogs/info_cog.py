@@ -34,7 +34,7 @@ class InfoCog(commands.Cog):
         embed.add_field(
             name="\ud83e\udde0 AI Brain",
             value=(
-                "Multi-provider fallback (Groq \u2192 OpenAI \u2192 "
+                "Multi-provider fallback (Gemini \u2192 Groq \u2192 OpenAI \u2192 "
                 "SambaNova \u2192 Cerebras \u2192 Ollama) with agentic tool calling, "
                 "retry logic, and session-aware chat. Supports vision, web search, "
                 "and automated attack path analysis."

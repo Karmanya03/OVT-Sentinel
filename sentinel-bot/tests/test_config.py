@@ -19,6 +19,13 @@ def test_valid_ollama():
     validate_config(_make_settings())
 
 
+def test_valid_gemini():
+    validate_config(_make_settings(
+        llm_provider="gemini",
+        gemini_api_key="AIza...",
+    ))
+
+
 def test_missing_discord_token():
     try:
         validate_config(_make_settings(discord_token=""))
@@ -30,8 +37,8 @@ def test_missing_discord_token():
 def test_no_provider_configured():
     try:
         validate_config(_make_settings(
-            llm_provider="groq",
-            groq_api_key=None,
+            llm_provider="gemini",
+            gemini_api_key=None,
             ollama_base_url="",
         ))
         assert False, "expected ConfigError"

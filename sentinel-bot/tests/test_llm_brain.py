@@ -10,7 +10,7 @@ class TestLLMBrain:
     @pytest.fixture
     def config(self):
         cfg = MagicMock()
-        cfg.llm_provider = "groq"
+        cfg.llm_provider = "gemini"
         cfg.use_agent_tools = True
         cfg.use_llm_cache = False
         cfg.llm_cache_ttl_secs = 300
@@ -30,6 +30,15 @@ class TestLLMBrain:
         assert brain.system_prompt.startswith("system prompt")
         assert "TOOL SAFETY RULES" in brain.system_prompt
         assert "reference text" in brain.system_prompt
+
+    @pytest.mark.asyncio
+    async def test_chat_dispatches_to_gemini(self, brain):
+        brain._chat_gemini = AsyncMock(return_value="gemini reply")
+        brain._chat_langchain = AsyncMock(return_value="langchain reply")
+        brain._providers = [("gemini", None, None)]
+        result = await brain.chat("session1", "user1", "hello world")
+        assert result == "gemini reply"
+        brain._chat_gemini.assert_awaited_once_with(None, None, "session1", "user1", "hello world")
 
     @pytest.mark.asyncio
     async def test_chat_dispatches_to_langchain(self, config):
@@ -89,14 +98,14 @@ class TestLLMBrain:
         assert "CURRENT SESSION CONTEXT" in result
 
     @pytest.mark.asyncio
-    async def test_analyze_image_no_vision_provider(self, config):
+    async def test_analyze_image_non_gemini(self, config):
         cfg = config
         cfg.llm_provider = "groq"
         with patch("core.llm_brain._load_prompts", return_value=("sys", "ref")):
             brain = LLMBrain(config=cfg, memory=MagicMock())
             brain._providers = [("groq", None, None)]
             result = await brain.analyze_image(b"fake_bytes")
-            assert "not supported" in result
+            assert "Gemini" in result
 
     @pytest.mark.asyncio
     async def test_call_with_retry_success(self, brain):
