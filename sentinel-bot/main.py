@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import contextlib
 import importlib.util
 import logging
 import os
@@ -33,6 +34,32 @@ async def check_extras() -> None:
     for mod, hint in extras.items():
         if importlib.util.find_spec(mod) is None:
             log.info("Optional dep '%s' not installed. %s", mod, hint)
+
+
+async def _start_health_server() -> asyncio.AbstractServer:
+    host = os.getenv("HEALTHCHECK_HOST", "0.0.0.0")
+    port = int(os.getenv("HEALTHCHECK_PORT", "8000"))
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await reader.read(1024)
+            body = b"ok"
+            response = (
+                "HTTP/1.1 200 OK\r\n"
+                f"Content-Length: {len(body)}\r\n"
+                "Content-Type: text/plain\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+            ).encode("ascii") + body
+            writer.write(response)
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    server = await asyncio.start_server(handle, host, port)
+    log.info("Healthcheck server listening on %s:%s", host, port)
+    return server
 
 
 async def main() -> None:
@@ -85,9 +112,18 @@ async def main() -> None:
 
     await check_extras()
 
-    bot = SentinelBot(agent_manager=agent_manager, memory=memory, llm=llm, config=settings)
-    log.info("Starting Discord bot...")
-    await bot.start(settings.discord_token)
+    server = await _start_health_server()
+    health_task = asyncio.create_task(server.serve_forever())
+    try:
+        bot = SentinelBot(agent_manager=agent_manager, memory=memory, llm=llm, config=settings)
+        log.info("Starting Discord bot...")
+        await bot.start(settings.discord_token)
+    finally:
+        health_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await health_task
+        server.close()
+        await server.wait_closed()
 
 
 if __name__ == "__main__":
