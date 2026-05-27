@@ -53,6 +53,40 @@ You have tools to interact with the attack VM. Follow these rules strictly:
 """
 
 
+def _resolve_tool_calling_agent_factory():
+    # Try a few import locations across langchain versions
+    candidates = [
+        ("langchain.agents", "create_tool_calling_agent"),
+        ("langchain.agents.tool_calling_agent", "create_tool_calling_agent"),
+        ("langchain.agents", "create_openai_tools_agent"),
+    ]
+    for mod, name in candidates:
+        try:
+            module = __import__(mod, fromlist=[name])
+            factory = getattr(module, name)
+            return factory
+        except Exception:
+            continue
+    raise RuntimeError("No tool-calling agent factory found in installed langchain. Try upgrading langchain.")
+
+
+def _resolve_agent_executor_class():
+    # AgentExecutor has moved around between versions; try common locations
+    candidates = [
+        ("langchain.agents", "AgentExecutor"),
+        ("langchain.agents.agent", "AgentExecutor"),
+        ("langchain.agents.agent_executor", "AgentExecutor"),
+    ]
+    for mod, name in candidates:
+        try:
+            module = __import__(mod, fromlist=[name])
+            cls = getattr(module, name)
+            return cls
+        except Exception:
+            continue
+    raise RuntimeError("No AgentExecutor class found in installed langchain. Try upgrading langchain or installing langchain-agents compat package.")
+
+
 def _load_prompts() -> tuple[str, str]:
     system = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8") if SYSTEM_PROMPT_PATH.exists() else ""
     ovt_ref = OVT_REFERENCE_PATH.read_text(encoding="utf-8") if OVT_REFERENCE_PATH.exists() else ""
@@ -198,15 +232,23 @@ class LLMBrain:
         if self.config.use_agent_tools:
             from core.tools import build_langchain_tools
             tools = build_langchain_tools()
-            from langchain.agents import create_tool_calling_agent, AgentExecutor
-            from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+            # resolve prompt helpers
+            try:
+                from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+            except Exception:
+                from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+
             prompt = ChatPromptTemplate.from_messages([
                 ("system", self.system_prompt),
                 MessagesPlaceholder(variable_name="chat_history"),
                 ("human", "{input}"),
                 MessagesPlaceholder(variable_name="agent_scratchpad"),
             ])
-            agent = create_tool_calling_agent(llm, tools, prompt)
+
+            agent_factory = _resolve_tool_calling_agent_factory()
+            agent = agent_factory(llm, tools, prompt)
+
+            AgentExecutor = _resolve_agent_executor_class()
             executor = AgentExecutor(agent=agent, tools=tools, verbose=False, max_iterations=8, max_execution_time=180)
             return executor, tools
         return llm, None
