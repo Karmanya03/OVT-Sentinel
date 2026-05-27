@@ -29,7 +29,7 @@
 Click the invite link → pick your server → done.
 
 ```
-https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=1099858774022&scope=bot
+https://discord.com/api/oauth2/authorize?client_id=1509111346824740964&permissions=1099858774022&scope=bot
 ```
 
 No Discord app creation, no hosting, no config.
