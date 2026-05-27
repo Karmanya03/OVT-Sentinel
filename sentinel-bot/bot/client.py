@@ -25,7 +25,6 @@ log = logging.getLogger("sentinel.bot")
 class SentinelBot(commands.Bot):
     def __init__(self, agent_manager: AgentManager, memory: SessionMemory, llm: LLMBrain, config: Settings) -> None:
         intents = discord.Intents.default()
-        intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
         self.agent_manager = agent_manager
         self.memory = memory
