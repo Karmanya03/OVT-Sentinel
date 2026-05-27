@@ -29,7 +29,8 @@ class Settings:
     sambanova_model: str = "Meta-Llama-3.1-70B-Instruct"
 
     cerebras_api_key: Optional[str] = None
-    cerebras_model: str = "llama3.1-70b"
+    # Default Cerebras model (set via CEREBRAS_MODEL env var if you want to override)
+    cerebras_model: str = "Qwen-3-235B-Instruct"
 
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o-mini"
@@ -48,7 +49,8 @@ class Settings:
     llm_cache_max_size: int = 1000
     lazy_agent_connect: bool = True
 
-    PROVIDER_PRIORITY = ["gemini", "groq", "openai", "sambanova", "cerebras", "ollama"]
+    # Preferred provider fallback order: try Cerebras first, then Groq, then Gemini, then others
+    PROVIDER_PRIORITY = ["cerebras", "groq", "gemini", "openai", "sambanova", "ollama"]
 
     def configured_providers(self) -> list[str]:
         key_map = {
