@@ -101,26 +101,24 @@ class AgentCog(commands.Cog):
         embed.timestamp = datetime.now(timezone.utc)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @agent_group.command(name="list", description="List all registered agents (admin only)")
+    @agent_group.command(name="list", description="Show your registered agents")
     async def agent_list(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-        rows = await self.agent_manager.memory.list_agents()
-        if not rows:
-            await interaction.followup.send("No agents registered.", ephemeral=True)
+        user_id = str(interaction.user.id)
+        row = await self.agent_manager.memory.get_agent(user_id)
+        if not row:
+            await interaction.followup.send("You haven't registered any agents.", ephemeral=True)
             return
 
+        client = self.agent_manager._agents.get(user_id)
+        status_emoji = "\u2705" if client and client.is_connected else "\u274c"
+
         embed = styled_embed(
-            "Registered Agents",
+            "Your Agents",
             color=THEME["info"],
+            fields=[
+                (f"{status_emoji} {row.get('label') or user_id[:12]}", f"URL: `{row['ws_url']}`", False),
+            ],
             timestamp=False,
         )
-        for row in rows:
-            uid = row["user_id"]
-            client = self.agent_manager._agents.get(uid)
-            status_emoji = "\u2705" if client and client.is_connected else "\u274c"
-            embed.add_field(
-                name=f"{status_emoji} `{uid[:12]}...`",
-                value=f"URL: `{row['ws_url']}`\nLabel: {row.get('label') or '—'}",
-                inline=False,
-            )
         await interaction.followup.send(embed=embed, ephemeral=True)
