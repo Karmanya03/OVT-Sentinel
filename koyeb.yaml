@@ -16,7 +16,7 @@ services:
       - key: AGENT_WS
         value: ws://127.0.0.1:7331
       - key: LLM_PROVIDER
-        value: gemini
+        value: groq
       - key: USE_AGENT_TOOLS
         value: "true"
       - key: USE_WEB_SEARCH

@@ -18,9 +18,7 @@ class Settings:
     allowed_user_ids: list[int] = field(default_factory=list)
     allowed_channel_ids: list[int] = field(default_factory=list)
 
-    llm_provider: str = "gemini"
-    gemini_api_key: Optional[str] = None
-    gemini_model: str = "models/gemini-2.0-flash"
+    llm_provider: str = "groq"
 
     groq_api_key: Optional[str] = None
     groq_model: str = "llama-3.3-70b-versatile"
@@ -49,12 +47,11 @@ class Settings:
     llm_cache_max_size: int = 1000
     lazy_agent_connect: bool = True
 
-    # Preferred provider fallback order: try Cerebras first, then Groq, then Gemini, then others
-    PROVIDER_PRIORITY = ["cerebras", "groq", "gemini", "openai", "sambanova", "ollama"]
+    # Preferred provider fallback order
+    PROVIDER_PRIORITY = ["cerebras", "groq", "openai", "sambanova", "ollama"]
 
     def configured_providers(self) -> list[str]:
         key_map = {
-            "gemini": self.gemini_api_key,
             "groq": self.groq_api_key,
             "openai": self.openai_api_key,
             "sambanova": self.sambanova_api_key,
@@ -86,7 +83,7 @@ def validate_config(s: Settings) -> None:
     if not configured:
         errors.append(
             "No LLM provider configured. Set at least one of: "
-            "GEMINI_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, "
+            "GROQ_API_KEY, OPENAI_API_KEY, "
             "SAMBANOVA_API_KEY, CEREBRAS_API_KEY"
         )
 
@@ -119,9 +116,7 @@ def load_settings() -> Settings:
         allowed_guild_ids=_parse_int_list(raw_guilds) if raw_guilds else [],
         allowed_user_ids=_parse_int_list(raw_users) if raw_users else [],
         allowed_channel_ids=_parse_int_list(raw_channels) if raw_channels else [],
-        llm_provider=os.getenv("LLM_PROVIDER", "gemini"),
-        gemini_api_key=os.getenv("GEMINI_API_KEY"),
-        gemini_model=os.getenv("GEMINI_MODEL", "models/gemini-2.0-flash"),
+        llm_provider=os.getenv("LLM_PROVIDER", "groq"),
         groq_api_key=os.getenv("GROQ_API_KEY"),
         groq_model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         sambanova_api_key=os.getenv("SAMBANOVA_API_KEY"),

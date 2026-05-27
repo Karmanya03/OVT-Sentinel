@@ -144,8 +144,8 @@ That's it. All commands now route to **your** VM.
          |      |           (sessions, agents,
          |      |            chat history)
          |      |
-         |      +-- LLM Brain (Gemini / Groq /
-         |           OpenAI / SambaNova / Ollama)
+         |      +-- LLM Brain (Groq / OpenAI /
+         |           SambaNova / Cerebras / Ollama)
          |
     ┌────┴────┬────┬────┐    WebSocket (per user)
    Agent A  Agent B  Agent C  ...
@@ -170,7 +170,6 @@ That's it. All commands now route to **your** VM.
 
 | Provider | API Key Env Var | Model | Free Tier |
 |----------|----------------|-------|-----------|
-| **Gemini** (default) | `GEMINI_API_KEY` | `models/gemini-2.0-flash` | 60 req/min, 1500/day |
 | **Groq** | `GROQ_API_KEY` | `llama-3.3-70b-versatile` | 30 req/min (70B) |
 | **SambaNova** | `SAMBANOVA_API_KEY` | `Meta-Llama-3.1-70B-Instruct` | Free, rate-limited |
 | **Cerebras** | `CEREBRAS_API_KEY` | `llama3.1-70b` | Free, rate-limited |
@@ -186,7 +185,6 @@ That's it. All commands now route to **your** VM.
 - No shell injection (process spawning uses argument arrays)
 - Rate limiter per user (10 req/sec default)
 - Web search + fetch for live vulnerability research
-- AI vision screenshot analysis (Gemini)
 
 ## Testing
 
@@ -210,7 +208,7 @@ A: No. Someone already hosts it. Just invite it to your server and connect your 
 A: No. The bot is already created. You just need the invite link.
 
 **Q: Do I need paid LLMs?**
-A: No. Free tiers work fine (Gemini, Groq, SambaNova, Cerebras).
+A: No. Free tiers work fine (Groq, SambaNova, Cerebras).
 
 **Q: Is this a bot, an agent, or a tiny gremlin?**
 A: Yes. The bot handles Discord, the agent lives on your VM, and the gremlin is the thing that renames your log files when you're not looking.

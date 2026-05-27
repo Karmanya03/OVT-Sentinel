@@ -53,6 +53,27 @@ You have tools to interact with the attack VM. Follow these rules strictly:
 """
 
 
+def _resolve_tool_calling_agent_factory():
+    try:
+        from langchain.agents import create_tool_calling_agent
+        return create_tool_calling_agent
+    except Exception:
+        pass
+    try:
+        from langchain.agents.tool_calling_agent import create_tool_calling_agent
+        return create_tool_calling_agent
+    except Exception:
+        pass
+    try:
+        from langchain.agents import create_openai_tools_agent
+        return create_openai_tools_agent
+    except Exception as exc:
+        raise RuntimeError(
+            "No tool-calling agent factory found. "
+            "Update langchain to a newer version (e.g., >=0.3.10)."
+        ) from exc
+
+
 def _load_prompts() -> tuple[str, str]:
     system = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8") if SYSTEM_PROMPT_PATH.exists() else ""
     ovt_ref = OVT_REFERENCE_PATH.read_text(encoding="utf-8") if OVT_REFERENCE_PATH.exists() else ""
@@ -91,9 +112,7 @@ class LLMBrain:
         return self._providers
 
     def _init_single(self, provider: str) -> Optional[tuple]:
-        if provider == "gemini" and self.config.gemini_api_key:
-            return self._init_gemini()
-        elif provider == "groq" and self.config.groq_api_key:
+        if provider == "groq" and self.config.groq_api_key:
             return self._init_groq()
         elif provider == "openai" and self.config.openai_api_key:
             return self._init_openai_compat(
@@ -119,49 +138,6 @@ class LLMBrain:
         elif provider == "ollama":
             return self._init_ollama()
         return None
-
-    def _init_gemini(self):
-        import google.generativeai as genai
-
-        genai.configure(api_key=self.config.gemini_api_key)
-
-        model = genai.GenerativeModel(
-            model_name=self.config.gemini_model,
-            system_instruction=self.system_prompt,
-            generation_config={"temperature": 0.2, "max_output_tokens": 8192},
-        )
-
-        tools_list = None
-        if self.config.use_agent_tools:
-            from core.tools import build_langchain_tools
-            langchain_tools = build_langchain_tools()
-            gemini_tool_defs = []
-            for lc_tool in langchain_tools:
-                try:
-                    schema = lc_tool.args_schema.schema() if hasattr(lc_tool, "args_schema") and lc_tool.args_schema else {}
-                except Exception:
-                    schema = {}
-                params = {"type": "object", "properties": {}, "required": []}
-                if "properties" in schema:
-                    for pname, pinfo in schema["properties"].items():
-                        ptype = pinfo.get("type", "string")
-                        if ptype == "integer": ptype = "integer"
-                        elif ptype == "number": ptype = "number"
-                        elif ptype == "boolean": ptype = "boolean"
-                        else: ptype = "string"
-                        params["properties"][pname] = {"type": ptype, "description": pinfo.get("description", "")}
-                        if pname in schema.get("required", []):
-                            params["required"].append(pname)
-                gemini_tool_defs.append({
-                    "name": lc_tool.name,
-                    "description": getattr(lc_tool, "description", "")[:500],
-                    "parameters": params,
-                })
-            if gemini_tool_defs:
-                tools_list = [{"function_declarations": gemini_tool_defs}]
-
-        model.tools = tools_list
-        return model, tools_list
 
     def _init_groq(self):
         from langchain_groq import ChatGroq
@@ -198,7 +174,7 @@ class LLMBrain:
         if self.config.use_agent_tools:
             from core.tools import build_langchain_tools
             tools = build_langchain_tools()
-            from langchain.agents import create_tool_calling_agent, AgentExecutor
+            from langchain.agents import AgentExecutor
             from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
             prompt = ChatPromptTemplate.from_messages([
                 ("system", self.system_prompt),
@@ -206,7 +182,8 @@ class LLMBrain:
                 ("human", "{input}"),
                 MessagesPlaceholder(variable_name="agent_scratchpad"),
             ])
-            agent = create_tool_calling_agent(llm, tools, prompt)
+            agent_factory = _resolve_tool_calling_agent_factory()
+            agent = agent_factory(llm, tools, prompt)
             executor = AgentExecutor(agent=agent, tools=tools, verbose=False, max_iterations=8, max_execution_time=180)
             return executor, tools
         return llm, None
@@ -233,68 +210,6 @@ class LLMBrain:
     def _is_transient(self, e: Exception) -> bool:
         err_str = str(e).lower()
         return any(k in err_str for k in ("rate", "429", "quota", "overloaded", "unavailable", "503", "500", "timeout", "retry", "limit", "exhausted"))
-
-    async def _chat_gemini(self, model, tools_list, session_id: str, user_id: str, message: str) -> str:
-        import google.generativeai as genai
-        chat = model.start_chat(enable_automatic_function_calling=False)
-
-        session_ctx = {}
-        if self.memory:
-            session_ctx = await self.memory.get_session_context(session_id)
-            history = await self.memory.get_chat_history(session_id, limit=15)
-            for h in history:
-                role = "user" if h["role"] == "user" else "model"
-                chat.history.append({"role": role, "parts": [{"text": h["content"]}]})
-
-        context_block = self._build_context_block(session_ctx)
-        full_message = f"{context_block}\n\n{message}" if context_block else message
-
-        max_turns = 8
-        final_response = None
-        for turn in range(max_turns):
-            try:
-                response = await self._call_with_retry(
-                    lambda: chat.send_message_async(full_message if turn == 0 else "Continue."),
-                    timeout=120.0,
-                )
-            except Exception:
-                if turn == 0:
-                    raise
-                break
-
-            if not response.candidates or not response.candidates[0].content.parts:
-                break
-
-            part = response.candidates[0].content.parts[0]
-            if part.function_call is None and not part.text:
-                break
-
-            final_response = response
-
-            if part.function_call:
-                fc = part.function_call
-                tool_name = fc.name
-                tool_args = {k: v for k, v in fc.args.items()}
-                log.info("Gemini function call: %s(%s)", tool_name, tool_args)
-
-                if tools_list and turn < max_turns - 1:
-                    from core.tools import build_langchain_tools
-                    all_tools = {t.name: t for t in build_langchain_tools()}
-                    try:
-                        result = await all_tools[tool_name].ainvoke(tool_args) if tool_name in all_tools else f"Unknown tool: {tool_name}"
-                    except Exception as e:
-                        result = f"Tool error: {e}"
-
-                    chat.history.append({"role": "model", "parts": [{"function_call": {"name": tool_name, "args": fc.args}}]})
-                    chat.history.append({"role": "user", "parts": [{"function_response": {"name": tool_name, "response": {"result": result[:3000]}}}]})
-                    continue
-                break
-
-        reply = final_response.text if final_response and hasattr(final_response, "text") else str(final_response or "")
-        if self.memory:
-            await self.memory.add_chat_message(session_id, "user", message)
-            await self.memory.add_chat_message(session_id, "assistant", reply)
-        return reply
 
     async def _chat_langchain(self, executor, session_id: str, user_id: str, message: str) -> str:
         session_ctx = {}
@@ -335,10 +250,7 @@ class LLMBrain:
 
         for i, (name, llm, tools) in enumerate(providers):
             try:
-                if name == "gemini":
-                    result = await self._chat_gemini(llm, tools, session_id, user_id, message)
-                else:
-                    result = await self._chat_langchain(llm, session_id, user_id, message)
+                result = await self._chat_langchain(llm, session_id, user_id, message)
 
                 if i > 0:
                     log.info("LLM fallback: switched from %s to %s", providers[i-1][0], name)
@@ -358,23 +270,7 @@ class LLMBrain:
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
     async def analyze_image(self, image_bytes: bytes, prompt: str = "Analyze this screenshot from a pentest VM. What do you see? Identify any tools, terminals, commands, or security-relevant information.") -> str:
-        providers = self._init_all_providers()
-        for name, llm, tools in providers:
-            if name == "gemini":
-                try:
-                    import PIL.Image, io
-                    image = PIL.Image.open(io.BytesIO(image_bytes))
-                    response = await self._call_with_retry(lambda: llm.generate_content_async([prompt, image]), timeout=60.0)
-                    return response.text
-                except ImportError:
-                    import google.generativeai as genai
-                    blob = genai.types.Blob(mime_type="image/png", data=image_bytes)
-                    response = await self._call_with_retry(lambda: llm.generate_content_async([prompt, blob]), timeout=60.0)
-                    return response.text
-                except Exception as e:
-                    log.warning("Gemini image analysis failed (%s), trying next provider", e)
-                    continue
-        return "Image analysis is only supported with the Gemini provider (no Gemini API key configured)."
+        return "Image analysis is not supported with the current LLM providers."
 
     @cached(ttl_secs=300)
     async def analyze_output(self, session_id: str, command: str, output: str) -> str:
