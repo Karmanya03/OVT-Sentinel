@@ -76,6 +76,8 @@ async def main() -> None:
                 log.info("Default agent registered (lazy connect)")
             else:
                 log.warning("Default agent connection failed: %s", exc)
+    elif settings.agent_ws:
+        log.info("No SENTINEL_TOKEN configured; skipping default bootstrap agent registration")
 
     llm = LLMBrain(config=settings, memory=memory)
 

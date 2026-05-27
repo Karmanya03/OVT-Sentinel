@@ -21,14 +21,23 @@ class AgentCog(commands.Cog):
     @app_commands.describe(
         ws_url="WebSocket URL of your agent (e.g. ws://your-vm:7331)",
         label="Optional friendly label for this agent",
+        token="Optional agent auth token (if omitted a token will be generated)",
     )
-    async def agent_connect(self, interaction: discord.Interaction, ws_url: str, label: str = "") -> None:
+    async def agent_connect(self, interaction: discord.Interaction, ws_url: str, label: str = "", token: str = "") -> None:
         await interaction.response.defer(ephemeral=True)
         user_id = str(interaction.user.id)
+        # Determine agent token: prefer explicit token param, then global bootstrap token, else generate per-agent token
+        if token:
+            agent_token = token
+        elif self.bot.bot_config.sentinel_token:
+            agent_token = self.bot.bot_config.sentinel_token
+        else:
+            import secrets
+            agent_token = secrets.token_hex(32)
 
         try:
             client = await self.agent_manager.register_agent(
-                user_id, ws_url, self.bot.bot_config.sentinel_token, label=label,
+                user_id, ws_url, agent_token, label=label,
             )
             if client.is_connected:
                 embed = styled_embed(
@@ -38,9 +47,11 @@ class AgentCog(commands.Cog):
                     footer=f"{interaction.user.display_name}",
                 )
             else:
+                # Show startup instruction with the token so the user can start their agent
+                cmd = f"sentinel-agent --bind 0.0.0.0:7331 --token \"{agent_token}\""
                 embed = styled_embed(
                     f"{EMOJIS['warn']} Agent Registered (Offline)",
-                    f"Agent saved but connection failed. It will auto-reconnect on first command.\nURL: `{ws_url}`",
+                    f"Agent saved but connection failed. It will auto-reconnect on first command.\nURL: `{ws_url}`\n\nStart the agent on your VM with:\n`{cmd}`\n\nKeep this token secret — it authenticates your agent.",
                     THEME["warning"],
                     footer=f"{interaction.user.display_name}",
                 )

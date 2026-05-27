@@ -6,7 +6,7 @@ def _make_settings(**overrides):
         discord_token="token123",
         database_url="sqlite:///tmp/test.db",
         agent_ws="ws://127.0.0.1:7331",
-        sentinel_token="securesecret",
+        sentinel_token="",
         data_dir="/tmp/data",
         llm_provider="ollama",
         ollama_base_url="http://localhost:11434",
@@ -46,12 +46,8 @@ def test_no_provider_configured():
         assert "No LLM provider configured" in str(e)
 
 
-def test_placeholder_token():
-    try:
-        validate_config(_make_settings(sentinel_token="token-placeholder"))
-        assert False, "expected ConfigError"
-    except ConfigError:
-        pass
+def test_missing_sentinel_token_is_allowed():
+    validate_config(_make_settings(sentinel_token=""))
 
 
 def test_missing_database_url():

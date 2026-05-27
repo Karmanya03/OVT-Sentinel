@@ -79,8 +79,6 @@ def validate_config(s: Settings) -> None:
         errors.append("DISCORD_TOKEN is required")
     if not s.database_url:
         errors.append("DATABASE_URL is required")
-    if not s.sentinel_token or s.sentinel_token == "token-placeholder":
-        errors.append("SENTINEL_TOKEN must be set to a secure random string")
     if not s.agent_ws:
         errors.append("AGENT_WS is required")
 
@@ -116,7 +114,7 @@ def load_settings() -> Settings:
         discord_token=os.getenv("DISCORD_TOKEN", ""),
         database_url=database_url,
         agent_ws=os.getenv("AGENT_WS", "ws://127.0.0.1:7331"),
-        sentinel_token=os.getenv("SENTINEL_TOKEN", "token-placeholder"),
+        sentinel_token=os.getenv("SENTINEL_TOKEN", ""),
         data_dir=data_dir,
         allowed_guild_ids=_parse_int_list(raw_guilds) if raw_guilds else [],
         allowed_user_ids=_parse_int_list(raw_users) if raw_users else [],
