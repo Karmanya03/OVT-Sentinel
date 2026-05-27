@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 @dataclass
 class Settings:
     discord_token: str
+    database_url: str
     agent_ws: str
     sentinel_token: str
     data_dir: str
@@ -74,6 +75,8 @@ def validate_config(s: Settings) -> None:
 
     if not s.discord_token:
         errors.append("DISCORD_TOKEN is required")
+    if not s.database_url:
+        errors.append("DATABASE_URL is required")
     if not s.sentinel_token or s.sentinel_token == "token-placeholder":
         errors.append("SENTINEL_TOKEN must be set to a secure random string")
     if not s.agent_ws:
@@ -101,6 +104,7 @@ def load_settings() -> Settings:
 
     root = Path(__file__).resolve().parent
     data_dir = os.getenv("SENTINEL_DATA_DIR", str(root / "data"))
+    database_url = os.getenv("DATABASE_URL", f"sqlite:///{data_dir}/sentinel.db")
 
     raw_guilds = os.getenv("ALLOWED_GUILD_IDS", "")
     raw_users = os.getenv("ALLOWED_USER_IDS", "")
@@ -108,6 +112,7 @@ def load_settings() -> Settings:
 
     return Settings(
         discord_token=os.getenv("DISCORD_TOKEN", ""),
+        database_url=database_url,
         agent_ws=os.getenv("AGENT_WS", "ws://127.0.0.1:7331"),
         sentinel_token=os.getenv("SENTINEL_TOKEN", "token-placeholder"),
         data_dir=data_dir,

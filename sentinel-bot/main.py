@@ -49,6 +49,7 @@ async def main() -> None:
         print("Configuration OK")
         providers = settings.configured_providers()
         print(f"  LLM fallback chain: {' → '.join(providers)}")
+        print(f"  Database: {settings.database_url[:50]}...")
         print(f"  Agent WS: {settings.agent_ws}")
         print(f"  Data dir: {settings.data_dir}")
         print(f"  Guild allowlist: {len(settings.allowed_guild_ids)} guilds")
@@ -60,19 +61,21 @@ async def main() -> None:
 
     os.makedirs(settings.data_dir, exist_ok=True)
 
-    memory = SessionMemory(os.path.join(settings.data_dir, "sentinel.db"))
+    memory = SessionMemory(settings.database_url)
 
-    agent_manager = AgentManager()
-    agent_manager.register("default", settings.agent_ws, settings.sentinel_token)
-    if settings.lazy_agent_connect:
-        log.info("Lazy agent connect: agent will connect on first command use")
-        asyncio.create_task(agent_manager.connect_all(max_retries=1, retry_delay=1.0))
-    else:
+    agent_manager = AgentManager(memory)
+    await agent_manager.load_all_from_db()
+    if settings.agent_ws and settings.sentinel_token:
         try:
-            await agent_manager.connect_all(max_retries=3, retry_delay=2.0)
-            log.info("Connected to default agent at %s", settings.agent_ws)
+            await agent_manager.register_agent(
+                "default", settings.agent_ws, settings.sentinel_token, label="default",
+                connect=not settings.lazy_agent_connect,
+            )
         except Exception as exc:
-            log.warning("Default agent connection failed (%s). Commands requiring the agent will fail until reconnect.", exc)
+            if settings.lazy_agent_connect:
+                log.info("Default agent registered (lazy connect)")
+            else:
+                log.warning("Default agent connection failed: %s", exc)
 
     llm = LLMBrain(config=settings, memory=memory)
 

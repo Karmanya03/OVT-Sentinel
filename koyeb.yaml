@@ -42,3 +42,12 @@ services:
       max: 1
     regions:
       - fra
+
+  - name: sentinel-db
+    type: postgres
+    service:
+      version: "16"
+      size: 1
+    volumes:
+      - name: pg-data
+        path: /var/lib/postgresql/data

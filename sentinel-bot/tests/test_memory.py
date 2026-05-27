@@ -7,9 +7,10 @@ from core.memory import SessionMemory
 @pytest.fixture
 def mem():
     tmp = tempfile.mktemp(suffix=".db", prefix="sentinel_test_")
-    m = SessionMemory(tmp)
+    db_url = f"sqlite:///{tmp}"
+    m = SessionMemory(db_url)
     yield m
-    m.conn.close()
+    m.close()
     if os.path.exists(tmp):
         os.remove(tmp)
     if os.path.exists(tmp + "-wal"):
@@ -23,9 +24,8 @@ class TestSessionMemory:
     async def test_get_or_create_session_new(self, mem):
         sid = await mem.get_or_create_session("user_abc")
         assert sid == "user_abc"
-        cur = mem.conn.cursor()
-        cur.execute("SELECT id FROM sessions WHERE id=?", (sid,))
-        assert cur.fetchone() is not None
+        row = mem._fetchone("SELECT id FROM sessions WHERE id = :sid", sid=sid)
+        assert row is not None
 
     @pytest.mark.asyncio
     async def test_get_or_create_session_existing(self, mem):
@@ -37,9 +37,8 @@ class TestSessionMemory:
     async def test_get_or_create_session_with_id(self, mem):
         sid = await mem.get_or_create_session("user_abc", session_id="custom_id")
         assert sid == "custom_id"
-        cur = mem.conn.cursor()
-        cur.execute("SELECT id FROM sessions WHERE id=?", ("custom_id",))
-        assert cur.fetchone() is None
+        row = mem._fetchone("SELECT id FROM sessions WHERE id = :sid", sid="custom_id")
+        assert row is None
 
     @pytest.mark.asyncio
     async def test_update_session_all_fields(self, mem):
@@ -167,10 +166,8 @@ class TestSessionMemory:
     async def test_log_output(self, mem):
         await mem.log_output("req_123", "stdout", "line1")
         await mem.log_output("req_123", "stdout", "line2")
-        cur = mem.conn.cursor()
-        cur.execute("SELECT count(*) as cnt FROM outputs WHERE request_id=?", ("req_123",))
-        row = cur.fetchone()
-        assert row["cnt"] == 2
+        rows = mem._fetchall("SELECT count(*) as cnt FROM outputs WHERE request_id = :rid", rid="req_123")
+        assert rows[0]["cnt"] == 2
 
     @pytest.mark.asyncio
     async def test_multiple_sessions(self, mem):
@@ -191,3 +188,39 @@ class TestSessionMemory:
         await mem.log_command("user1", "user1", "test", output_summary="x" * 600)
         ctx = await mem.get_session_context("user1")
         assert len(ctx["recent_commands"][0]["summary"]) <= 500
+
+    @pytest.mark.asyncio
+    async def test_save_and_get_agent(self, mem):
+        await mem.save_agent("user1", "ws://host1:7331", "tok1", label="my vm")
+        row = await mem.get_agent("user1")
+        assert row["ws_url"] == "ws://host1:7331"
+        assert row["token"] == "tok1"
+        assert row["label"] == "my vm"
+
+    @pytest.mark.asyncio
+    async def test_get_agent_not_found(self, mem):
+        row = await mem.get_agent("nobody")
+        assert row is None
+
+    @pytest.mark.asyncio
+    async def test_delete_agent(self, mem):
+        await mem.save_agent("user1", "ws://host1", "tok1")
+        await mem.delete_agent("user1")
+        row = await mem.get_agent("user1")
+        assert row is None
+
+    @pytest.mark.asyncio
+    async def test_list_agents(self, mem):
+        await mem.save_agent("user1", "ws://host1", "tok1")
+        await mem.save_agent("user2", "ws://host2", "tok2")
+        rows = await mem.list_agents()
+        assert len(rows) == 2
+
+    @pytest.mark.asyncio
+    async def test_update_agent(self, mem):
+        await mem.save_agent("user1", "ws://host1", "tok1")
+        await mem.save_agent("user1", "ws://host2", "tok2", label="updated")
+        row = await mem.get_agent("user1")
+        assert row["ws_url"] == "ws://host2"
+        assert row["token"] == "tok2"
+        assert row["label"] == "updated"

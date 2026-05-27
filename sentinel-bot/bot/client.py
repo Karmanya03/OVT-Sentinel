@@ -101,7 +101,7 @@ class SentinelBot(commands.Bot):
         except Exception:
             pass
         try:
-            self.memory.conn.close()
+            self.memory.close()
         except Exception:
             pass
         await super().close()

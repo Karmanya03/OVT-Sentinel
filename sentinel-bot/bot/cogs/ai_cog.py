@@ -26,9 +26,8 @@ class AICog(commands.Cog):
         self.config = config
         self.rate_limiter = rate_limiter
 
-    @property
-    def agent(self):
-        return self.agent_manager.get_active()
+    async def _get_agent(self, interaction: discord.Interaction):
+        return await self.agent_manager.get_agent_for_user(str(interaction.user.id))
 
     async def _rate_limited_execution(self, interaction: discord.Interaction) -> None:
         await self.rate_limiter.acquire(f"user:{interaction.user.id}")
@@ -65,7 +64,8 @@ class AICog(commands.Cog):
         session_id = str(interaction.user.id)
         command = f"ovt graph path -i ./graphs/attack_graph.json --from '{source}' --to '{target}'"
         output_lines = []
-        async for msg in self.agent.run_command(command):
+        agent = await self._get_agent(interaction)
+        async for msg in agent.run_command(command):
             if msg.type == "command_output":
                 output_lines.append(msg.payload.get("data", ""))
             elif msg.type == "command_complete":
@@ -130,7 +130,8 @@ Be direct and specific. If something was correct, say so briefly."""
         await interaction.response.defer()
         session_id = str(interaction.user.id)
 
-        loot_msg = await safe_call(interaction, lambda: self.agent.get_loot(), "get loot listing")
+        agent = await self._get_agent(interaction)
+        loot_msg = await safe_call(interaction, lambda: agent.get_loot(), "get loot listing")
         if loot_msg is None or loot_msg.type == "error":
             return
 
@@ -146,7 +147,7 @@ Be direct and specific. If something was correct, say so briefly."""
             return
 
         content_msg = await safe_call(interaction,
-            lambda: self.agent.read_loot_file(target["path"]), "read loot file")
+            lambda: agent.read_loot_file(target["path"]), "read loot file")
         if content_msg is None or content_msg.type == "error":
             return
 

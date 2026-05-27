@@ -34,13 +34,11 @@ class RunCog(commands.Cog):
         self.config = config
         self.rate_limiter = rate_limiter
 
-    @property
-    def agent(self):
-        return self.agent_manager.get_active()
+    async def _get_agent(self, interaction: discord.Interaction):
+        return await self.agent_manager.get_agent_for_user(str(interaction.user.id))
 
-    @property
-    def _agent_name(self) -> str:
-        return self.agent_manager.active_name or ""
+    async def _get_agent_name(self, interaction: discord.Interaction) -> str:
+        return str(interaction.user.id)[:8]
 
     async def _rate_limited_execution(self, interaction: discord.Interaction) -> None:
         await self.rate_limiter.acquire(f"user:{interaction.user.id}")
@@ -91,7 +89,8 @@ class RunCog(commands.Cog):
 
         output_lines: List[str] = []
         request_id = None
-        async for msg in self.agent.run_command(command):
+        agent = await self._get_agent(interaction)
+        async for msg in agent.run_command(command):
             if msg.type == "command_output":
                 request_id = msg.payload.get("request_id", request_id)
                 line = msg.payload.get("data", "")
@@ -111,7 +110,7 @@ class RunCog(commands.Cog):
                 command=command,
                 exit_code=0,
                 output_summary="\n".join(output_lines[-5:]),
-                agent_name=self._agent_name,
+                agent_name=await self._get_agent_name(interaction),
             )
 
         content = "\n".join(output_lines[-50:])
@@ -159,7 +158,8 @@ class RunCog(commands.Cog):
     async def stream(self, interaction: discord.Interaction, command: str) -> None:
         await interaction.response.send_message(f"\u25b6 Starting: `{command}`")
         line_count = 0
-        async for msg in self.agent.run_command(command):
+        agent = await self._get_agent(interaction)
+        async for msg in agent.run_command(command):
             if msg.type == "command_output":
                 line = msg.payload.get("data", "")
                 if line.strip():
@@ -174,7 +174,8 @@ class RunCog(commands.Cog):
     async def doctor(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         output_lines = []
-        async for msg in self.agent.run_command("ovt doctor"):
+        agent = await self._get_agent(interaction)
+        async for msg in agent.run_command("ovt doctor"):
             if msg.type == "command_output":
                 output_lines.append(msg.payload.get("data", ""))
             elif msg.type == "command_complete":
@@ -186,7 +187,8 @@ class RunCog(commands.Cog):
     async def _run_and_send(self, interaction: discord.Interaction, command: str, title: str) -> list[str]:
         await interaction.response.defer()
         output_lines = []
-        async for msg in self.agent.run_command(command):
+        agent = await self._get_agent(interaction)
+        async for msg in agent.run_command(command):
             if msg.type == "command_output":
                 line = msg.payload.get("data", "")
                 output_lines.append(line)
@@ -258,7 +260,8 @@ class RunCog(commands.Cog):
 
         await interaction.response.defer()
         policy_lines = []
-        async for msg in self.agent.run_command(policy_cmd):
+        agent = await self._get_agent(interaction)
+        async for msg in agent.run_command(policy_cmd):
             if msg.type == "command_output":
                 policy_lines.append(msg.payload.get("data", ""))
             elif msg.type == "command_complete":
@@ -285,7 +288,7 @@ class RunCog(commands.Cog):
         spray_cmd = " ".join(spray_parts)
 
         spray_lines = []
-        async for msg in self.agent.run_command(spray_cmd):
+        async for msg in agent.run_command(spray_cmd):
             if msg.type == "command_output":
                 spray_lines.append(msg.payload.get("data", ""))
             elif msg.type == "command_complete":
@@ -310,8 +313,9 @@ class RunCog(commands.Cog):
 
     @app_commands.command(name="kill", description="Kill a running command by request ID")
     async def kill(self, interaction: discord.Interaction, request_id: str) -> None:
+        agent = await self._get_agent(interaction)
         result = await safe_call(interaction,
-            lambda: self.agent.kill_command(request_id), "kill command")
+            lambda: agent.kill_command(request_id), "kill command")
         if result is not None:
             await interaction.response.send_message(f"Kill signal sent for {request_id}")
 

@@ -19,14 +19,14 @@ class MonitorCog(commands.Cog):
         self.memory = memory
         self.rate_limiter = rate_limiter
 
-    @property
-    def agent(self):
-        return self.agent_manager.get_active()
+    async def _get_agent(self, interaction: discord.Interaction):
+        return await self.agent_manager.get_agent_for_user(str(interaction.user.id))
 
     @app_commands.command(name="status", description="Get agent VM status")
     async def status(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
-        msg = await safe_call(interaction, lambda: self.agent.get_status(), "get status")
+        agent = await self._get_agent(interaction)
+        msg = await safe_call(interaction, lambda: agent.get_status(), "get status")
         if msg is None or msg.type == "error":
             return
 
@@ -53,17 +53,19 @@ class MonitorCog(commands.Cog):
     @app_commands.command(name="loot", description="List loot files on the agent VM")
     async def loot(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
-        msg = await safe_call(interaction, lambda: self.agent.get_loot(), "get loot")
+        agent = await self._get_agent(interaction)
+        msg = await safe_call(interaction, lambda: agent.get_loot(), "get loot")
         if msg is None or msg.type == "error":
             return
 
         files = msg.payload.get("files", [])
-        view = LootView(files, agent=self.agent)
+        view = LootView(files, agent=agent)
         await interaction.followup.send("Loot files:", view=view)
 
     @app_commands.command(name="readloot", description="Read a loot file from the agent VM")
     async def read_loot(self, interaction: discord.Interaction, path: str) -> None:
         await interaction.response.defer()
+        agent = await self._get_agent(interaction)
         if ".." in path or path.startswith("/") or path.startswith("\\"):
             await interaction.followup.send("\u274c Path traversal detected: `..`, absolute paths, and symlinks are not allowed.")
             return

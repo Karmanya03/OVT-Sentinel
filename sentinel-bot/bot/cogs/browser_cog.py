@@ -21,9 +21,8 @@ class BrowserCog(commands.Cog):
         self.rate_limiter = rate_limiter
         self.llm = llm
 
-    @property
-    def agent(self):
-        return self.agent_manager.get_active()
+    async def _get_agent(self, interaction: discord.Interaction):
+        return await self.agent_manager.get_agent_for_user(str(interaction.user.id))
 
     async def _send_screenshot(self, interaction: discord.Interaction, msg, analyze: bool, screenshot_label: str = "Screenshot") -> None:
         if msg.type == "error":
@@ -59,7 +58,8 @@ class BrowserCog(commands.Cog):
     @app_commands.describe(analyze="Whether to analyze the screenshot with AI (default: True)")
     async def screenshot(self, interaction: discord.Interaction, analyze: bool = True) -> None:
         await interaction.response.defer()
-        msg = await safe_call(interaction, lambda: self.agent.take_screenshot(), "take screenshot")
+        agent = await self._get_agent(interaction)
+        msg = await safe_call(interaction, lambda: agent.take_screenshot(), "take screenshot")
         if msg is None:
             return
         await self._send_screenshot(interaction, msg, analyze, "Screenshot")
@@ -73,7 +73,8 @@ class BrowserCog(commands.Cog):
         if err:
             await interaction.followup.send(f"\u274c {err}")
             return
-        msg = await safe_call(interaction, lambda: self.agent.browse_url(url), "browse URL")
+        agent = await self._get_agent(interaction)
+        msg = await safe_call(interaction, lambda: agent.browse_url(url), "browse URL")
         if msg is None:
             return
         await self._send_screenshot(interaction, msg, analyze, "Browser Screenshot")
