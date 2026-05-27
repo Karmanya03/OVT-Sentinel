@@ -1,0 +1,44 @@
+name: ovt-sentinel
+services:
+  - name: sentinel-bot
+    type: worker
+    instance: micro
+    docker:
+      dockerfile: Dockerfile
+      context: ./sentinel-bot
+    ports: []
+    volumes:
+      - name: sentinel-data
+        path: /app/data
+    envs:
+      - key: SENTINEL_DATA_DIR
+        value: /app/data
+      - key: DISCORD_TOKEN
+        value: ""
+      - key: AGENT_WS
+        value: ws://127.0.0.1:7331
+      - key: SENTINEL_TOKEN
+        value: ""
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        value: ""
+      - key: GROQ_API_KEY
+        value: ""
+      - key: OPENAI_API_KEY
+        value: ""
+      - key: USE_AGENT_TOOLS
+        value: "true"
+      - key: USE_WEB_SEARCH
+        value: "true"
+      - key: REQUIRE_CONFIRM_DESTRUCTIVE
+        value: "true"
+      - key: LAZY_AGENT_CONNECT
+        value: "true"
+      - key: LOG_LEVEL
+        value: INFO
+    scalings:
+      min: 1
+      max: 1
+    regions:
+      - fra

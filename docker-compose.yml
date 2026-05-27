@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  sentinel-bot:
+    build:
+      context: ./sentinel-bot
+      dockerfile: Dockerfile
+    volumes:
+      - sentinel-data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  sentinel-data:

