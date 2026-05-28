@@ -486,40 +486,13 @@ class LLMBrain:
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
     async def analyze_image(self, image_bytes: bytes, prompt: str = "Analyze this screenshot from a pentest VM. What do you see? Identify any tools, terminals, commands, or security-relevant information.") -> str:
+        import base64
+        encoded = base64.b64encode(image_bytes).decode("utf-8")
         providers = self._init_all_providers()
         for name, llm, tools in providers:
-            if name == "groq":
-                try:
-                    import base64
-                    encoded = base64.b64encode(image_bytes).decode("utf-8")
-
-                    if hasattr(llm, "agent"):
-                        chat = llm.agent.llm
-                    else:
-                        chat = llm
-
-                    from langchain_core.messages import HumanMessage
-                    msg = HumanMessage(
-                        content=[
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{encoded}"},
-                            },
-                        ]
-                    )
-                    response = await self._call_with_retry(
-                        lambda: chat.ainvoke([msg]),
-                        timeout=60.0,
-                    )
-                    return response.content if hasattr(response, "content") else str(response)
-                except Exception as e:
-                    log.warning("Groq image analysis failed (%s), trying next provider", e)
-                    continue
-            elif name == "gemini":
-                try:
+            try:
+                if name == "gemini":
                     from google.genai import types
-
                     response = await self._call_with_retry(
                         lambda: llm.aio.models.generate_content(
                             model=self.config.gemini_model,
@@ -536,10 +509,30 @@ class LLMBrain:
                         timeout=60.0,
                     )
                     return response.text
-                except Exception as e:
-                    log.warning("Gemini image analysis failed (%s), trying next provider", e)
-                    continue
-        return "Image analysis requires a vision-capable provider (Gemini or Groq with Llama 4). Configure GEMINI_API_KEY, GOOGLE_API_KEY, or GROQ_API_KEY."
+                else:
+                    if hasattr(llm, "agent"):
+                        chat = llm.agent.llm
+                    else:
+                        chat = llm
+                    from langchain_core.messages import HumanMessage
+                    msg = HumanMessage(
+                        content=[
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                            },
+                        ]
+                    )
+                    response = await self._call_with_retry(
+                        lambda: chat.ainvoke([msg]),
+                        timeout=60.0,
+                    )
+                    return response.content if hasattr(response, "content") else str(response)
+            except Exception as e:
+                log.warning("%s image analysis failed (%s), trying next provider", name, e)
+                continue
+        return "Image analysis requires a vision-capable provider. Configure NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY."
 
     @cached(ttl_secs=300)
     async def analyze_output(self, session_id: str, command: str, output: str) -> str:
