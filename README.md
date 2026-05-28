@@ -46,11 +46,87 @@ cd OVT-Sentinel/sentinel-agent
 cargo build --release
 ```
 
-### 3. Connect in Discord
+### 3. Generate Token & Get Your Command
 
-In any channel the bot can see, type `/agent connect`:
+In any channel the bot can see, type `/agent register`:
 
 ```
+/agent register tunnel:True label:Kali-VM
+```
+
+| Field | What it does |
+|-------|-------------|
+| `tunnel` | `True` for auto-tunnel via bore, `False` for direct connection |
+| `label` | Friendly name for your VM (optional) |
+
+The bot replies with your token and the exact command to run on Kali:
+
+```
+📝 Agent Token Generated
+
+Install bore (one-time): cargo install bore-cli
+
+Run on Kali:
+sentinel-agent --token "f439a7b3..." --tunnel
+
+Token: f439a7b3...
+Keep this secret!
+```
+
+### 4. Run the Agent on Kali
+
+Copy-paste the command into your Kali terminal:
+
+```bash
+cargo install bore-cli
+./target/release/sentinel-agent --token "f439a7b3..." --tunnel
+```
+
+The agent prints a public tunnel URL:
+```
+🚇 TUNNEL ACTIVE: ws://bore.pub:22698
+```
+
+### 5. Connect in Discord
+
+Once the agent is running, connect to it with:
+
+```
+/agent connect ws_url:ws://bore.pub:22698
+```
+
+The bot auto-detects it's a bore tunnel and connects.
+
+### 6. Start Chatting
+
+```
+/chat enumerate the domain
+/run enum-all
+/screenshot
+```
+
+Everything runs on **your** VM. You're done.
+
+---
+
+### Alternative: Direct Connection (no tunnel)
+
+If your Kali has a public IP:
+
+1. `/agent register tunnel:False label:Kali-VM`
+2. On Kali: `./target/release/sentinel-agent --token "..." --bind 0.0.0.0:7331`
+3. `/agent connect ws_url:ws://YOUR_PUBLIC_IP:7331`
+
+### Alternative: WireGuard Mesh
+
+For air-gapped Kali that connects via WireGuard to a relay VPS:
+
+1. Set up WireGuard between Kali and a relay VPS
+2. On the relay VPS, forward port 7331 to Kali's WireGuard IP:
+   `iptables -t nat -A PREROUTING -p tcp --dport 7331 -j DNAT --to-destination 10.0.0.2:7331`
+3. `/agent register tunnel:False label:Kali-VM`
+4. On Kali: `./target/release/sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf`
+5. `/agent connect ws_url:ws://RELAY_VPS_IP:7331`
 /agent connect tunnel:True label:Kali-VM
 ```
 
