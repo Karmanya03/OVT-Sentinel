@@ -116,7 +116,7 @@ class LLMBrain:
                     self._providers.append((provider, *result))
                     log.info("LLM provider initialized: %s", provider)
             except Exception as e:
-                log.warning("Failed to init provider %s: %s", provider, e)
+                log.warning("Failed to init provider %s: %s", provider, e, exc_info=True)
 
         if not self._providers:
             raise RuntimeError(
@@ -262,26 +262,38 @@ class LLMBrain:
             except Exception:
                 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", self.system_prompt),
-                MessagesPlaceholder(variable_name="chat_history"),
-                ("human", "{input}"),
-                MessagesPlaceholder(variable_name="agent_scratchpad"),
-            ])
+            try:
+                prompt = ChatPromptTemplate.from_messages([
+                    ("system", self.system_prompt),
+                    MessagesPlaceholder(variable_name="chat_history"),
+                    ("human", "{input}"),
+                    MessagesPlaceholder(variable_name="agent_scratchpad"),
+                ])
+            except Exception as e:
+                log.warning("Prompt build failed: %s", e, exc_info=True)
+                return llm, None
 
             agent_factory = _resolve_tool_calling_agent_factory()
             if not agent_factory:
                 log.warning("Tool-calling agent factory not available in langchain; running without agent tools")
                 return llm, None
 
-            agent = agent_factory(llm, tools, prompt)
+            try:
+                agent = agent_factory(llm, tools, prompt)
+            except Exception as e:
+                log.warning("Agent factory failed: %s", e, exc_info=True)
+                return llm, None
 
             AgentExecutor = _resolve_agent_executor_class()
             if not AgentExecutor:
                 log.warning("AgentExecutor class not available in langchain; running without agent executor")
                 return llm, None
 
-            executor = AgentExecutor(agent=agent, tools=tools, verbose=False, max_iterations=8, max_execution_time=180)
+            try:
+                executor = AgentExecutor(agent=agent, tools=tools, verbose=False, max_iterations=8, max_execution_time=180)
+            except Exception as e:
+                log.warning("AgentExecutor build failed: %s", e, exc_info=True)
+                return llm, None
             return executor, tools
         return llm, None
 
