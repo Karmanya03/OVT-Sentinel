@@ -67,10 +67,13 @@ pub async fn start_cloudflared_tunnel(local_port: u16) -> Result<Tunnel> {
         }
     }
 
+    // Keep draining stderr so cloudflared doesn't get SIGPIPE
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     let mut child = child;
 
     tokio::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+        let mut drain = String::new();
         loop {
             tokio::select! {
                 _ = shutdown_rx.changed() => {
@@ -78,9 +81,13 @@ pub async fn start_cloudflared_tunnel(local_port: u16) -> Result<Tunnel> {
                     let _ = child.wait().await;
                     break;
                 }
+                // Keep reading (and discarding) stderr to prevent SIGPIPE
+                _ = reader.read_line(&mut drain) => {
+                    drain.clear();
+                }
                 status = child.wait() => {
                     match status {
-                        Ok(s) => tracing::warn!("cloudflared process exited unexpectedly: {}", s),
+                        Ok(s) => tracing::warn!("cloudflared process exited: {}", s),
                         Err(e) => tracing::error!("cloudflared process error: {}", e),
                     }
                     break;
