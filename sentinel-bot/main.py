@@ -78,7 +78,8 @@ async def _start_server(agent_manager, settings) -> None:
     async def ws_handler(websocket: Any) -> None:
         await agent_manager.handle_ws_connection(websocket)
 
-    async def process_request(path: str, request_headers) -> Any:
+    async def process_request(connection, request) -> Any:
+        path = request.path if hasattr(request, "path") else "/"
         if path in ("/", "/health"):
             return 200, [(b"Content-Type", b"text/plain")], b"ok"
 
