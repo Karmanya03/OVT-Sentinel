@@ -13,7 +13,7 @@ from ..notifications import (
     styled_embed, session_embed, ai_embed, cmd_embed, error_embed,
     THEME, EMOJIS,
 )
-from ..paginator import send_paginated, send_paginated_to
+from ..paginator import send_paginated
 
 log = logging.getLogger("sentinel.session")
 
