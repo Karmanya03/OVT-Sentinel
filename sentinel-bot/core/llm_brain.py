@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -53,46 +55,33 @@ You have tools to interact with the attack VM. Follow these rules strictly:
 """
 
 
-def _resolve_tool_calling_agent_factory():
-    candidates = [
-        ("langchain.agents", "create_tool_calling_agent"),
-        ("langchain.agents.tool_calling_agent", "create_tool_calling_agent"),
-        ("langchain.agents", "create_openai_tools_agent"),
-        ("langchain.agents.openai_tools", "create_openai_tools_agent"),
-        ("langchain_community.agents", "create_tool_calling_agent"),
-    ]
-    for mod, name in candidates:
-        try:
-            module = __import__(mod, fromlist=[name])
-            factory = getattr(module, name)
-            return factory
-        except Exception:
-            continue
-    return None
-
-
-def _resolve_agent_executor_class():
-    # AgentExecutor has moved around between versions; try common locations
-    candidates = [
-        ("langchain.agents", "AgentExecutor"),
-        ("langchain.agents.agent", "AgentExecutor"),
-        ("langchain.agents.agent_executor", "AgentExecutor"),
-    ]
-    for mod, name in candidates:
-        try:
-            module = __import__(mod, fromlist=[name])
-            cls = getattr(module, name)
-            return cls
-        except Exception:
-            continue
-    # Not fatal; return None so callers can run without an AgentExecutor
-    return None
-
-
 def _load_prompts() -> tuple[str, str]:
     system = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8") if SYSTEM_PROMPT_PATH.exists() else ""
     ovt_ref = OVT_REFERENCE_PATH.read_text(encoding="utf-8") if OVT_REFERENCE_PATH.exists() else ""
     return system, ovt_ref
+
+
+def _message_content_to_text(content) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("content") or ""
+                if text:
+                    parts.append(str(text))
+                continue
+            text = getattr(item, "text", None) or getattr(item, "content", None)
+            if text:
+                parts.append(str(text))
+        return "".join(parts)
+    return str(content)
 
 
 class LLMBrain:
@@ -138,6 +127,9 @@ class LLMBrain:
         return chat_history[-max_messages:]
 
     def _init_single(self, provider: str) -> Optional[tuple]:
+        if provider == "mistral" and os.getenv("MISTRAL_API_KEY"):
+            return self._init_mistral()
+
         if provider == "gemini" and (self.config.gemini_api_key or self.config.google_api_key):
             return self._init_gemini()
         elif provider == "groq" and self.config.groq_api_key:
@@ -180,6 +172,36 @@ class LLMBrain:
         elif provider == "ollama":
             return self._init_ollama()
         return None
+
+    def _init_mistral(self):
+        try:
+            from mistralai.client import Mistral
+        except Exception as e:
+            raise RuntimeError("Install mistralai SDK to use the 'mistral' provider: pip install mistralai") from e
+
+        api_key = os.getenv("MISTRAL_API_KEY")
+        client = Mistral(api_key=api_key)
+
+        tools_bundle = None
+        if self.config.use_agent_tools:
+            from core.tools import build_langchain_tools
+            langchain_tools = build_langchain_tools()
+            tool_defs = []
+            for t in langchain_tools:
+                try:
+                    schema = t.args_schema.schema() if hasattr(t, "args_schema") and t.args_schema else {}
+                except Exception:
+                    schema = {}
+                params = {"type": "object", "properties": {}, "required": []}
+                for pname, pinfo in (schema.get("properties") or {}).items():
+                    params["properties"][pname] = {"type": pinfo.get("type", "string"), "description": pinfo.get("description", "")}
+                    if pname in schema.get("required", []):
+                        params["required"].append(pname)
+                tool_defs.append({"type": "function", "function": {"name": t.name, "description": getattr(t, "description", ""), "parameters": params}})
+            if tool_defs:
+                tools_bundle = tool_defs
+
+        return client, tools_bundle
 
     def _init_gemini(self):
         from google import genai
@@ -229,7 +251,7 @@ class LLMBrain:
             max_tokens=8192,
             api_key=self.config.groq_api_key,
         )
-        return self._build_agent_executor(llm)
+        return llm, None
 
     def _init_openai_compat(self, base_url, api_key, model, label):
         try:
@@ -240,7 +262,7 @@ class LLMBrain:
         if base_url:
             kwargs["base_url"] = base_url
         llm = ChatOpenAI(**kwargs)
-        return self._build_agent_executor(llm)
+        return llm, None
 
     def _init_ollama(self):
         from langchain_ollama import ChatOllama
@@ -250,52 +272,19 @@ class LLMBrain:
             temperature=0.2,
             num_predict=8192,
         )
-        return self._build_agent_executor(llm)
+        return llm, None
 
-    def _build_agent_executor(self, llm):
+    def _build_langchain_agent(self, llm):
         if self.config.use_agent_tools:
+            from langchain.agents import create_agent
             from core.tools import build_langchain_tools
             tools = build_langchain_tools()
-            # resolve prompt helpers
             try:
-                from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-            except Exception:
-                from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-
-            try:
-                from langchain_core.messages import SystemMessage
-                prompt = ChatPromptTemplate.from_messages([
-                    SystemMessage(content=self.system_prompt),
-                    MessagesPlaceholder(variable_name="chat_history"),
-                    ("human", "{input}"),
-                    MessagesPlaceholder(variable_name="agent_scratchpad"),
-                ])
+                agent = create_agent(model=llm, tools=tools, system_prompt=self.system_prompt)
+                return agent, tools
             except Exception as e:
-                log.warning("Prompt build failed: %s", e, exc_info=True)
+                log.warning("LangChain create_agent failed: %s", e, exc_info=True)
                 return llm, None
-
-            agent_factory = _resolve_tool_calling_agent_factory()
-            if not agent_factory:
-                log.warning("Tool-calling agent factory not available in langchain; running without agent tools")
-                return llm, None
-
-            try:
-                agent = agent_factory(llm, tools, prompt)
-            except Exception as e:
-                log.warning("Agent factory failed: %s", e, exc_info=True)
-                return llm, None
-
-            AgentExecutor = _resolve_agent_executor_class()
-            if not AgentExecutor:
-                log.warning("AgentExecutor class not available in langchain; running without agent executor")
-                return llm, None
-
-            try:
-                executor = AgentExecutor(agent=agent, tools=tools, verbose=False, max_iterations=8, max_execution_time=180)
-            except Exception as e:
-                log.warning("AgentExecutor build failed: %s", e, exc_info=True)
-                return llm, None
-            return executor, tools
         return llm, None
 
     async def _call_with_retry(self, coro_factory, max_retries: int = 3, timeout: float = 120.0):
@@ -420,13 +409,88 @@ class LLMBrain:
             await self.memory.add_chat_message(session_id, "assistant", reply)
         return reply
 
-    async def _chat_langchain(self, executor, session_id: str, user_id: str, message: str) -> str:
+    async def _chat_mistral(self, client, tools_bundle, messages) -> str:
+        from core.tools import build_langchain_tools
+
+        model = os.getenv("MISTRAL_MODEL", "mistral-large-latest")
+        sdk_msgs = []
+        for m in messages:
+            role = getattr(m, "role", None) or ("user" if m.__class__.__name__ == "HumanMessage" else "assistant")
+            content = _message_content_to_text(getattr(m, "content", None))
+            sdk_msgs.append({"role": role, "content": content})
+
+        tool_map = {t.name: t for t in build_langchain_tools()} if tools_bundle else {}
+
+        for _ in range(8):
+            response = await self._call_with_retry(
+                lambda: asyncio.to_thread(
+                    client.chat.complete,
+                    model=model,
+                    messages=sdk_msgs,
+                    tools=tools_bundle,
+                ),
+                timeout=180.0,
+            )
+
+            choice = response.choices[0]
+            msg = getattr(choice, "message", None) or choice
+            tool_calls = list(getattr(msg, "tool_calls", None) or [])
+            if not tool_calls:
+                return _message_content_to_text(getattr(msg, "content", msg))
+
+            assistant_tool_calls = []
+            for tc in tool_calls:
+                assistant_tool_calls.append(
+                    {
+                        "id": getattr(tc, "id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments or "{}",
+                        },
+                    }
+                )
+            sdk_msgs.append(
+                {
+                    "role": "assistant",
+                    "content": _message_content_to_text(getattr(msg, "content", "")),
+                    "tool_calls": assistant_tool_calls,
+                }
+            )
+
+            for tc in tool_calls:
+                fname = tc.function.name
+                try:
+                    fargs = json.loads(tc.function.arguments) if getattr(tc.function, "arguments", None) else {}
+                except Exception:
+                    fargs = {}
+
+                try:
+                    if fname in tool_map:
+                        result = await tool_map[fname].ainvoke(fargs)
+                    else:
+                        result = f"Unknown tool: {fname}"
+                except Exception as e:
+                    result = f"Tool error: {e}"
+
+                sdk_msgs.append(
+                    {
+                        "role": "tool",
+                        "name": fname,
+                        "tool_call_id": getattr(tc, "id", None),
+                        "content": self._truncate_text(str(result), 3000),
+                    }
+                )
+
+        return "Mistral tool-calling did not converge after 8 turns."
+
+    async def _chat_langchain(self, llm, tools_bundle, session_id: str, user_id: str, message: str) -> str:
         session_ctx = {}
         chat_history = []
         if self.memory:
             session_ctx = await self.memory.get_session_context(session_id)
             raw_history = await self.memory.get_chat_history(session_id, limit=15)
-            from langchain_core.messages import HumanMessage, AIMessage
+            from langchain_core.messages import AIMessage, HumanMessage
             for h in raw_history:
                 if h["role"] == "user":
                     chat_history.append(HumanMessage(content=h["content"]))
@@ -437,20 +501,33 @@ class LLMBrain:
         context_block = self._build_context_block(session_ctx)
         context_block = self._truncate_text(context_block, 5000)
         message = self._truncate_text(message, 6000)
-        context_msg = f"{context_block}\n\n{message}" if context_block else message
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-        is_executor = hasattr(executor, "ainvoke") and hasattr(executor, "agent")
-        if is_executor:
-            response = await self._call_with_retry(
-                lambda: executor.ainvoke({"input": context_msg, "chat_history": chat_history}),
-                timeout=180.0,
-            )
-            reply = response.get("output", str(response))
+        messages = list(chat_history)
+        if context_block:
+            messages.append(SystemMessage(content=context_block))
+        messages.append(HumanMessage(content=message))
+
+        if self.config.use_agent_tools:
+            try:
+                from mistralai.client import Mistral as _MistralClass
+            except Exception:
+                _MistralClass = None
+
+            if _MistralClass and isinstance(llm, _MistralClass):
+                reply = await self._chat_mistral(llm, tools_bundle, messages)
+            else:
+                agent, _ = self._build_langchain_agent(llm)
+                response = await self._call_with_retry(
+                    lambda: agent.ainvoke({"messages": messages}),
+                    timeout=180.0,
+                )
+                response_messages = response.get("messages", []) if isinstance(response, dict) else []
+                reply_source = response_messages[-1].content if response_messages else response
+                reply = _message_content_to_text(reply_source)
         else:
-            system_prompt = self._truncate_text(self.system_prompt, 6000)
-            full_prompt = f"{system_prompt}\n\n{context_block}\n\nUser: {message}"
-            result = await self._call_with_retry(lambda: executor.ainvoke(full_prompt), timeout=120.0)
-            reply = result.content if hasattr(result, "content") else str(result)
+            result = await self._call_with_retry(lambda: llm.ainvoke(messages), timeout=120.0)
+            reply = _message_content_to_text(getattr(result, "content", result))
 
         if self.memory:
             await self.memory.add_chat_message(session_id, "user", message)
@@ -458,30 +535,45 @@ class LLMBrain:
         return reply
 
     async def chat(self, session_id: str, user_id: str, message: str, context_override: dict = None) -> str:
+        if self.config.use_agent_tools:
+            try:
+                from core.tools import set_tool_user_context
+                set_tool_user_context(user_id)
+            except Exception:
+                pass
+
         providers = self._init_all_providers()
         last_error = None
 
-        for i, (name, llm, tools) in enumerate(providers):
-            try:
-                if name == "gemini":
-                    result = await self._chat_gemini(llm, tools, session_id, user_id, message)
-                else:
-                    result = await self._chat_langchain(llm, session_id, user_id, message)
+        try:
+            for i, (name, llm, tools) in enumerate(providers):
+                try:
+                    if name == "gemini":
+                        result = await self._chat_gemini(llm, tools, session_id, user_id, message)
+                    else:
+                        result = await self._chat_langchain(llm, tools, session_id, user_id, message)
 
-                if i > 0:
-                    log.info("LLM fallback: switched from %s to %s", providers[i-1][0], name)
-                    self._current_provider = name
-                return result
+                    if i > 0:
+                        log.info("LLM fallback: switched from %s to %s", providers[i-1][0], name)
+                        self._current_provider = name
+                    return result
 
-            except Exception as e:
-                last_error = e
-                if self._is_transient(e) and i < len(providers) - 1:
-                    log.warning("LLM %s failed (%s), falling back to %s", name, e, providers[i+1][0])
-                    continue
-                if i < len(providers) - 1:
-                    log.warning("LLM %s failed (%s), falling back to %s", name, e, providers[i+1][0])
-                    continue
-                raise
+                except Exception as e:
+                    last_error = e
+                    if self._is_transient(e) and i < len(providers) - 1:
+                        log.warning("LLM %s failed (%s), falling back to %s", name, e, providers[i+1][0])
+                        continue
+                    if i < len(providers) - 1:
+                        log.warning("LLM %s failed (%s), falling back to %s", name, e, providers[i+1][0])
+                        continue
+                    raise
+        finally:
+            if self.config.use_agent_tools:
+                try:
+                    from core.tools import set_tool_user_context
+                    set_tool_user_context(None)
+                except Exception:
+                    pass
 
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
@@ -510,10 +602,6 @@ class LLMBrain:
                     )
                     return response.text
                 else:
-                    if hasattr(llm, "agent"):
-                        chat = llm.agent.llm
-                    else:
-                        chat = llm
                     from langchain_core.messages import HumanMessage
                     msg = HumanMessage(
                         content=[
@@ -525,14 +613,14 @@ class LLMBrain:
                         ]
                     )
                     response = await self._call_with_retry(
-                        lambda: chat.ainvoke([msg]),
+                        lambda: llm.ainvoke([msg]),
                         timeout=60.0,
                     )
-                    return response.content if hasattr(response, "content") else str(response)
+                    return _message_content_to_text(getattr(response, "content", response))
             except Exception as e:
                 log.warning("%s image analysis failed (%s), trying next provider", name, e)
                 continue
-        return "Image analysis requires a vision-capable provider. Configure NVIDIA_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY."
+        return "Image analysis requires a vision-capable provider. Configure NVIDIA_API_KEY, GROQ_API_KEY, or Gemini (GEMINI_API_KEY)."
 
     @cached(ttl_secs=300)
     async def analyze_output(self, session_id: str, command: str, output: str) -> str:

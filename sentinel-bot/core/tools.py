@@ -1,3 +1,4 @@
+import contextvars
 from typing import Optional
 
 from .bloodhound_parser import analyze_bloodhound_json
@@ -6,6 +7,7 @@ from .output_parser import parse_output
 _agent_manager = None
 _memory_store = None
 _use_web_search = True
+_tool_user_ctx = contextvars.ContextVar("tool_user_id", default=None)
 
 DESTRUCTIVE_KEYWORDS = [
     "forge", "skeleton-key", "dsrm", "relay", "dump", "exec",
@@ -31,6 +33,28 @@ def init_tools(agent_manager, memory, use_web_search: bool = True):
     _agent_manager = agent_manager
     _memory_store = memory
     _use_web_search = use_web_search
+
+
+def set_tool_user_context(user_id: Optional[str]) -> None:
+    _tool_user_ctx.set(user_id)
+
+
+async def _resolve_agent_client():
+    if not _agent_manager:
+        return None, "Agent client not initialized."
+
+    user_id = _tool_user_ctx.get()
+    if user_id:
+        try:
+            client = await _agent_manager.get_agent_for_user(user_id, default_fallback=True)
+            return client, None
+        except Exception as e:
+            return None, str(e)
+
+    try:
+        return _agent_manager.get_active(), None
+    except RuntimeError as e:
+        return None, str(e)
 
 
 def _is_destructive(cmd: str) -> bool:
@@ -71,12 +95,9 @@ async def _run_ovt_command_raw(command: str) -> str:
     sanitize_err = _sanitize_command(command)
     if sanitize_err:
         return sanitize_err
-    if not _agent_manager:
-        return "Agent client not initialized."
-    try:
-        client = _agent_manager.get_active()
-    except RuntimeError as e:
-        return str(e)
+    client, err = await _resolve_agent_client()
+    if err:
+        return err
     output_lines = []
     try:
         async for msg in client.run_command(command):
@@ -119,12 +140,9 @@ def build_langchain_tools() -> list:
     @tool
     async def get_vm_status() -> str:
         """Get current VM status: CPU, RAM, disk, network connections, running processes, OVT version."""
-        if not _agent_manager:
-            return "Agent client not initialized"
-        try:
-            client = _agent_manager.get_active()
-        except RuntimeError as e:
-            return str(e)
+        client, err = await _resolve_agent_client()
+        if err:
+            return err
         try:
             msg = await client.get_status()
             if msg.type == "error":
@@ -214,12 +232,9 @@ def build_langchain_tools() -> list:
     @tool
     async def list_loot_files() -> str:
         """List all files in the loot directory (hashes, tickets, BloodHound JSON, reports)."""
-        if not _agent_manager:
-            return "Agent client not initialized"
-        try:
-            client = _agent_manager.get_active()
-        except RuntimeError as e:
-            return str(e)
+        client, err = await _resolve_agent_client()
+        if err:
+            return err
         try:
             msg = await client.get_loot()
             if msg.type == "error":
@@ -238,12 +253,9 @@ def build_langchain_tools() -> list:
     @tool
     async def read_loot_file(path: Annotated[str, "Path to the loot file to read"]) -> str:
         """Read the content of a specific loot file (hashes, credentials, JSON, etc.)."""
-        if not _agent_manager:
-            return "Agent client not initialized"
-        try:
-            client = _agent_manager.get_active()
-        except RuntimeError as e:
-            return str(e)
+        client, err = await _resolve_agent_client()
+        if err:
+            return err
         if ".." in path or path.startswith("/") or path.startswith("\\"):
             return "Error: Path traversal detected."
         try:
@@ -382,12 +394,9 @@ def build_langchain_tools() -> list:
         filename: Annotated[str, "BloodHound JSON filename in the loot directory"],
     ) -> str:
         """Analyze a BloodHound JSON file and return key findings: kerberoastable users, AS-REP roastable users, high-value groups, interesting ACLs, shortest paths to DA."""
-        if not _agent_manager:
-            return "Agent client not initialized"
-        try:
-            client = _agent_manager.get_active()
-        except RuntimeError as e:
-            return str(e)
+        client, err = await _resolve_agent_client()
+        if err:
+            return err
         try:
             loot = await client.get_loot()
             if loot.type == "error":

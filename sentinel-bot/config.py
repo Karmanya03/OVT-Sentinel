@@ -59,25 +59,26 @@ class Settings:
     agent_ws_port: int = 8002
 
     # Preferred provider fallback order: try Cerebras first, then Groq, then Gemini, then others
-    PROVIDER_PRIORITY = ["nvidia", "cerebras", "groq", "gemini", "minimax", "openai", "sambanova", "ollama"]
+    PROVIDER_PRIORITY = ["nvidia", "mistral", "cerebras", "groq", "gemini", "minimax", "openai", "sambanova", "ollama"]
 
     def provider_candidates(self) -> list[str]:
         key_map = {
             "gemini": self.gemini_api_key or self.google_api_key,
             "groq": self.groq_api_key,
+            "mistral": os.getenv("MISTRAL_API_KEY"),
             "openai": self.openai_api_key,
             "sambanova": self.sambanova_api_key,
             "cerebras": self.cerebras_api_key,
             "nvidia": self.nvidia_api_key,
             "minimax": self.nvidia_api_key,
-            "ollama": self.ollama_base_url if self._ollama_enabled() else None,
+            "ollama": self.ollama_base_url if (self._ollama_enabled() or self.llm_provider.strip().lower() == "ollama") else None,
         }
         return [p for p in self.PROVIDER_PRIORITY if key_map.get(p)]
 
     def configured_providers(self) -> list[str]:
         configured = self.provider_candidates()
         preferred = self.llm_provider.strip().lower() if self.llm_provider else ""
-        if preferred and preferred in configured:
+        if self.llm_provider_explicit and preferred and preferred in configured:
             # Put preferred first, keep others as fallback
             return [preferred] + [p for p in configured if p != preferred]
         return configured
@@ -115,7 +116,7 @@ def validate_config(s: Settings) -> None:
         errors.append(
             "No LLM provider configured. Set at least one of: "
                 "GEMINI_API_KEY or GOOGLE_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, "
-            "SAMBANOVA_API_KEY, CEREBRAS_API_KEY, NVIDIA_API_KEY"
+            "SAMBANOVA_API_KEY, CEREBRAS_API_KEY, NVIDIA_API_KEY, MISTRAL_API_KEY"
         )
     elif s.llm_provider_explicit and s.llm_provider.strip().lower() not in configured:
         errors.append(
@@ -141,10 +142,12 @@ def load_settings() -> Settings:
     llm_provider_env = os.getenv("LLM_PROVIDER")
     llm_provider_explicit = bool(llm_provider_env and llm_provider_env.strip())
     default_llm_provider = "gemini"
-    if os.getenv("GROQ_API_KEY"):
-        default_llm_provider = "groq"
-    elif os.getenv("NVIDIA_API_KEY"):
+    if os.getenv("NVIDIA_API_KEY"):
         default_llm_provider = "nvidia"
+    elif os.getenv("MISTRAL_API_KEY"):
+        default_llm_provider = "mistral"
+    elif os.getenv("GROQ_API_KEY"):
+        default_llm_provider = "groq"
     elif os.getenv("OPENAI_API_KEY"):
         default_llm_provider = "openai"
     elif os.getenv("CEREBRAS_API_KEY"):
