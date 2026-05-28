@@ -64,7 +64,7 @@ The bot replies with your token and the exact command to run on Kali:
 ```
 📝 Agent Token Generated
 
-Install bore (one-time): cargo install bore-cli
+Install ngrok (one-time): curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | ...
 
 Run on Kali:
 sentinel-agent --token "f439a7b3..." --tunnel
@@ -72,19 +72,23 @@ sentinel-agent --token "f439a7b3..." --tunnel
 Token: f439a7b3...
 Keep this secret!
 ```
+🚇 TUNNEL ACTIVE: ws://bore.pub:22698
+```
 
 ### 4. Run the Agent on Kali
 
 Copy-paste the command into your Kali terminal:
 
 ```bash
-cargo install bore-cli
+# First-time ngrok setup (free account at https://dashboard.ngrok.com/signup)
+ngrok config add-authtoken YOUR_TOKEN
+
 ./target/release/sentinel-agent --token "f439a7b3..." --tunnel
 ```
 
 The agent prints a public tunnel URL:
 ```
-🚇 TUNNEL ACTIVE: ws://bore.pub:22698
+🚇 TUNNEL ACTIVE: ws://0.tcp.ngrok.io:12345
 ```
 
 ### 5. Connect in Discord
@@ -92,10 +96,10 @@ The agent prints a public tunnel URL:
 Once the agent is running, connect to it with:
 
 ```
-/agent connect ws_url:ws://bore.pub:22698
+/agent connect ws_url:ws://0.tcp.ngrok.io:12345
 ```
 
-The bot auto-detects it's a bore tunnel and connects.
+The bot auto-detects it's a tunnel connection.
 
 ### 6. Start Chatting
 

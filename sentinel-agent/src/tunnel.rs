@@ -15,26 +15,28 @@ impl Tunnel {
     }
 }
 
-pub async fn start_bore_tunnel(local_port: u16) -> Result<Tunnel> {
-    let mut child = Command::new("bore")
-        .args([
-            "local",
-            &local_port.to_string(),
-            "--to",
-            "bore.pub",
-        ])
+pub async fn start_ngrok_tunnel(local_port: u16, auth_token: Option<&str>) -> Result<Tunnel> {
+    let port_str = local_port.to_string();
+    let mut args = vec!["tcp", &port_str, "--log=stdout", "--log-level=info"];
+    if let Some(token) = auth_token {
+        args.push("--authtoken");
+        args.push(token);
+    }
+
+    let mut child = Command::new("ngrok")
+        .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .kill_on_drop(true)
         .spawn()
         .context(
-            "Failed to spawn 'bore'. Install it first: cargo install bore-cli",
+            "Failed to spawn 'ngrok'. Install it from https://ngrok.com/download",
         )?;
 
     let stdout = child
         .stdout
         .take()
-        .context("failed to capture bore stdout")?;
+        .context("failed to capture ngrok stdout")?;
 
     let mut reader = tokio::io::BufReader::new(stdout);
     use tokio::io::AsyncBufReadExt;
@@ -47,14 +49,14 @@ pub async fn start_bore_tunnel(local_port: u16) -> Result<Tunnel> {
         let n = reader
             .read_line(&mut line_buf)
             .await
-            .context("failed to read bore output")?;
+            .context("failed to read ngrok output")?;
         if n == 0 {
             child.wait().await?;
-            anyhow::bail!("bore exited without establishing a tunnel");
+            anyhow::bail!("ngrok exited without establishing a tunnel");
         }
         let trimmed = line_buf.trim();
-        if let Some(url) = extract_bore_url(trimmed) {
-            public_url = format!("ws://{}", url);
+        if let Some(url) = extract_ngrok_url(trimmed) {
+            public_url = url;
             tracing::info!("Tunnel established: {}", public_url);
             break;
         }
@@ -73,8 +75,8 @@ pub async fn start_bore_tunnel(local_port: u16) -> Result<Tunnel> {
                 }
                 status = child.wait() => {
                     match status {
-                        Ok(s) => tracing::warn!("bore process exited unexpectedly: {}", s),
-                        Err(e) => tracing::error!("bore process error: {}", e),
+                        Ok(s) => tracing::warn!("ngrok process exited unexpectedly: {}", s),
+                        Err(e) => tracing::error!("ngrok process error: {}", e),
                     }
                     break;
                 }
@@ -88,11 +90,15 @@ pub async fn start_bore_tunnel(local_port: u16) -> Result<Tunnel> {
     })
 }
 
-fn extract_bore_url(line: &str) -> Option<String> {
-    let start = line.find("bore.pub:")?;
-    let rest = &line[start..];
-    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-    Some(rest[..end.min(start + 50)].to_string())
+fn extract_ngrok_url(line: &str) -> Option<String> {
+    // ngrok JSON log line: {"lvl":"info","msg":"started tunnel","url":"tcp://0.tcp.ngrok.io:12345"}
+    if !line.contains("started tunnel") {
+        return None;
+    }
+    let parsed: serde_json::Value = serde_json::from_str(line).ok()?;
+    let url = parsed.get("url")?.as_str()?;
+    // Convert tcp://host:port to ws://host:port
+    Some(url.replacen("tcp://", "ws://", 1))
 }
 
 pub async fn register_tunnel(register_url: &str, tunnel_ws_url: &str, token: &str) -> Result<()> {

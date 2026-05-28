@@ -38,7 +38,8 @@ class AgentCog(commands.Cog):
             else:
                 extra = "After starting, copy the tunnel URL from terminal and connect:\n`/agent connect ws_url:<tunnel-url>`"
             instructions = (
-                f"**Install bore (one-time):** `cargo install bore-cli`\n\n"
+                f"**Install ngrok (one-time):** `curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && echo 'deb https://ngrok-agent.s3.amazonaws.com buster main' | sudo tee /etc/apt/sources.list.d/ngrok.list >/dev/null && sudo apt update && sudo apt install ngrok`\n\n"
+                f"**Set auth token (one-time):** `ngrok config add-authtoken YOUR_TOKEN`\n   Get a free token at https://dashboard.ngrok.com/signup\n\n"
                 f"**Run on Kali:**\n```\n{cmd}\n```\n{extra}"
             )
         else:
@@ -80,7 +81,7 @@ class AgentCog(commands.Cog):
                 import secrets
                 agent_token = secrets.token_hex(32)
 
-        is_tunnel = "bore.pub" in ws_url
+        is_tunnel = "ngrok" in ws_url
 
         try:
             client = await self.agent_manager.register_agent(

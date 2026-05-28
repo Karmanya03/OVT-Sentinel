@@ -45,9 +45,13 @@ pub struct Args {
     #[arg(long, requires = "tls")]
     pub tls_key: Option<String>,
 
-    /// Auto-create a public tunnel via bore (requires `bore-cli` installed)
+    /// Auto-create a public tunnel via ngrok (requires `ngrok` installed)
     #[arg(long)]
     pub tunnel: bool,
+
+    /// ngrok auth token (optional — set via `ngrok config add-authtoken` once)
+    #[arg(long, env = "NGROK_TOKEN")]
+    pub ngrok_token: Option<String>,
 
     /// Bot HTTP registration URL (e.g. https://app.koyeb.app/register)
     /// Agent will POST its tunnel URL here on startup for auto-discovery
@@ -135,7 +139,7 @@ async fn main() -> Result<()> {
             .unwrap_or("7331")
             .parse()
             .unwrap_or(7331);
-        match tunnel::start_bore_tunnel(port).await {
+        match tunnel::start_ngrok_tunnel(port, args.ngrok_token.as_deref()).await {
             Ok(tunnel) => {
                 let url = tunnel.public_url().to_string();
                 tracing::info!(
@@ -144,7 +148,7 @@ async fn main() -> Result<()> {
                     args.bind
                 );
                 println!(
-                    "\n🚇 TUNNEL ACTIVE: {}\n   Point your bot's AGENT_WS to this address.\n",
+                    "\n🚇 TUNNEL ACTIVE: {}\n   Use this URL with /agent connect.\n",
                     url
                 );
                 if let Some(register_url) = &args.bot_register_url {
@@ -154,13 +158,13 @@ async fn main() -> Result<()> {
                     }
                 } else {
                     tracing::info!("No --bot-register-url set; skipping auto-registration.");
-                    println!("   Set BOT_REGISTER_URL or --bot-register-url to auto-register with your bot.\n");
+                    println!("   Use /agent connect ws_url:<tunnel-url> to connect.\n");
                 }
                 Some(url)
             }
             Err(e) => {
                 tracing::error!("Failed to start tunnel: {}", e);
-                println!("\n❌ Tunnel failed: {}\n   Falling back to direct connection only.\n", e);
+                println!("\n❌ ngrok tunnel failed: {}\n   Falling back to direct connection only.\n", e);
                 None
             }
         }
