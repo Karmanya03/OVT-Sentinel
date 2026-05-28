@@ -25,7 +25,7 @@ class Settings:
     gemini_model: str = "models/gemini-2.5-flash"
 
     groq_api_key: Optional[str] = None
-    groq_model: str = "llama-4-scout-17b-16e-instruct"
+    groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
 
     sambanova_api_key: Optional[str] = None
     sambanova_model: str = "Meta-Llama-3.1-70B-Instruct"
@@ -173,7 +173,7 @@ def load_settings() -> Settings:
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         gemini_model=os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash"),
         groq_api_key=os.getenv("GROQ_API_KEY"),
-        groq_model=os.getenv("GROQ_MODEL", "llama-4-scout-17b-16e-instruct"),
+        groq_model=os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"),
         sambanova_api_key=os.getenv("SAMBANOVA_API_KEY"),
         sambanova_model=os.getenv("SAMBANOVA_MODEL", "Meta-Llama-3.1-70B-Instruct"),
         cerebras_api_key=os.getenv("CEREBRAS_API_KEY"),

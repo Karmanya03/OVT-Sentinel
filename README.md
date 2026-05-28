@@ -312,7 +312,7 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 |----------|----------------|---------------|---------|-------------------|
 | **NVIDIA NIM** ⭐ | `NVIDIA_API_KEY` | `mistralai/mistral-large-3-675b-instruct-2512` | Text generation (primary) | ~40 RPM, no token caps, free, no CC |
 | **Cerebras** | `CEREBRAS_API_KEY` | `Qwen-3-235B-Instruct` | Text fallback | Free, rate-limited |
-| **Groq** | `GROQ_API_KEY` | `llama-4-scout-17b-16e-instruct` | **Vision / Image analysis** | 30 req/min, supports images |
+| **Groq** | `GROQ_API_KEY` | `meta-llama/llama-4-scout-17b-16e-instruct` | **Vision / Image analysis** | 30 req/min, supports images |
 | **Gemini** | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | `models/gemini-2.5-flash` | Vision fallback | 60 req/min, 1500/day, supports images |
 | **MiniMax** (via NVIDIA) | `NVIDIA_API_KEY` | `minimaxai/minimax-m2.7` | Text fallback | Same key as NVIDIA, auto-chained |
 | **OpenAI** | `OPENAI_API_KEY` | `gpt-4o-mini` | Text fallback | Paid |

@@ -263,8 +263,9 @@ class LLMBrain:
                 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 
             try:
+                from langchain_core.messages import SystemMessage
                 prompt = ChatPromptTemplate.from_messages([
-                    ("system", self.system_prompt),
+                    SystemMessage(content=self.system_prompt),
                     MessagesPlaceholder(variable_name="chat_history"),
                     ("human", "{input}"),
                     MessagesPlaceholder(variable_name="agent_scratchpad"),
