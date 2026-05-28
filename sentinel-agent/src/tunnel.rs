@@ -148,15 +148,14 @@ fn extract_from_text(line: &str) -> Option<String> {
 }
 
 pub async fn register_tunnel(register_url: &str, tunnel_ws_url: &str, token: &str) -> Result<()> {
-    let payload = serde_json::json!({
-        "token": token,
-        "url": tunnel_ws_url,
-    });
+    // Use the register_url as the base (strip any existing query params)
+    let base = register_url.split('?').next().unwrap_or(register_url);
+    let params = [("token", token), ("url", tunnel_ws_url)];
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(register_url)
-        .json(&payload)
+        .get(base)
+        .query(&params)
         .timeout(std::time::Duration::from_secs(10))
         .send()
         .await

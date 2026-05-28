@@ -53,7 +53,6 @@ class AgentCog(commands.Cog):
                 )
             else:
                 ws_url = raw_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
-                ws_url += f":{self.bot.bot_config.agent_ws_port}"
                 cmd = f"sudo ./sentinel-agent --token \"{agent_token}\" --connect-to-bot \"{ws_url}/agent-ws\" --fallback-tunnel{register_flag}"
                 instructions = (
                     f"**Agent connects outbound to the bot** \u2014 no tunnel needed.\n"

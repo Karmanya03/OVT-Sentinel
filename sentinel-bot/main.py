@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import websockets
 
@@ -40,65 +41,18 @@ async def check_extras() -> None:
             log.info("Optional dep '%s' not installed. %s", mod, hint)
 
 
-async def _start_health_server(agent_manager: AgentManager, settings) -> asyncio.AbstractServer:
-    host = os.getenv("HEALTHCHECK_HOST", "0.0.0.0")
-    port = int(os.getenv("HEALTHCHECK_PORT", "8000"))
-
-    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        try:
-            raw = await reader.read(4096)
-            text = raw.decode("utf-8", errors="replace")
-            lines = text.split("\r\n")
-            first = lines[0] if lines else ""
-            method, path, _ = first.split(" ", 2) if " " in first else ("", "", "")
-
-            if method == "POST" and path == "/register":
-                body_start = text.find("\r\n\r\n") + 4
-                body_text = text[body_start:] if body_start > 3 else ""
-                status, resp_body = await _handle_register(body_text, agent_manager, settings)
-            else:
-                status, resp_body = 200, b"ok"
-
-            status_text = {200: "OK", 400: "Bad Request", 401: "Unauthorized", 500: "Internal Server Error"}.get(status, "OK")
-            response = (
-                f"HTTP/1.1 {status} {status_text}\r\n"
-                f"Content-Length: {len(resp_body)}\r\n"
-                "Content-Type: application/json\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-            ).encode("ascii") + (resp_body if isinstance(resp_body, bytes) else resp_body.encode())
-            writer.write(response)
-            await writer.drain()
-        except Exception as e:
-            log.error("Health server error: %s", e)
-        finally:
-            writer.close()
-            await writer.wait_closed()
-
-    server = await asyncio.start_server(handle, host, port)
-    log.info("Healthcheck server listening on %s:%s", host, port)
-    return server
-
-
-async def _handle_register(body: str, agent_manager: AgentManager, settings) -> tuple[int, bytes]:
-    try:
-        data = json.loads(body) if body else {}
-    except json.JSONDecodeError:
-        return 400, json.dumps({"error": "invalid json"}).encode()
-
-    token = data.get("token", "")
-    url = data.get("url", "")
+async def _handle_register_query(params: dict, agent_manager: AgentManager, settings) -> tuple[int, bytes]:
+    token = (params.get("token") or [""])[0]
+    url = (params.get("url") or [""])[0]
 
     if not url or not url.startswith("ws"):
         return 400, json.dumps({"error": "missing or invalid 'url'"}).encode()
 
-    # Accept global sentinel_token OR any per-agent token from the DB
     if not token:
         return 401, json.dumps({"error": "missing token"}).encode()
 
     agent_row = None
     if settings.sentinel_token and token == settings.sentinel_token:
-        # Global bootstrap token — map to "default" user
         user_id = "default"
     else:
         agent_row = await agent_manager.memory.get_agent_by_token(token)
@@ -109,7 +63,6 @@ async def _handle_register(body: str, agent_manager: AgentManager, settings) -> 
     try:
         label = agent_row.get("label", "") if agent_row else "auto-registered"
         await agent_manager.memory.save_agent(user_id, url, token, label=label)
-        # Create or update the agent client and attempt connection
         await agent_manager.register_agent(user_id, url, token, label=label, connect=settings.lazy_agent_connect is False)
         log.info("Agent for user %s registered tunnel URL: %s", user_id[:8], url)
         return 200, json.dumps({"status": "ok", "url": url}).encode()
@@ -118,20 +71,30 @@ async def _handle_register(body: str, agent_manager: AgentManager, settings) -> 
         return 500, json.dumps({"error": str(e)}).encode()
 
 
-async def _start_ws_server(agent_manager, settings) -> None:
-    host = os.getenv("AGENT_WS_HOST", "0.0.0.0")
-    port = settings.agent_ws_port
+async def _start_server(agent_manager, settings) -> None:
+    host = os.getenv("SERVER_HOST", "0.0.0.0")
+    port = int(os.getenv("SERVER_PORT", "8000"))
 
-    async def handler(websocket: Any) -> None:
+    async def ws_handler(websocket: Any) -> None:
         await agent_manager.handle_ws_connection(websocket)
 
     async def process_request(path: str, request_headers) -> Any:
         if path in ("/", "/health"):
             return 200, [(b"Content-Type", b"text/plain")], b"ok"
-        return None
 
-    async with websockets.serve(handler, host, port, process_request=process_request):
-        log.info("Agent WebSocket server listening on ws://%s:%s/agent-ws", host, port)
+        if path.startswith("/register"):
+            qs = urlparse(path).query
+            params = parse_qs(qs)
+            status, body = await _handle_register_query(params, agent_manager, settings)
+            return status, [(b"Content-Type", b"application/json")], body
+
+        if path == "/agent-ws":
+            return None  # proceed with WebSocket upgrade
+
+        return 404, [(b"Content-Type", b"text/plain")], b"not found"
+
+    async with websockets.serve(ws_handler, host, port, process_request=process_request):
+        log.info("Server listening on http://%s:%s (WS at /agent-ws)", host, port)
         await asyncio.Future()
 
 
@@ -150,7 +113,6 @@ async def main() -> None:
         providers = settings.configured_providers()
         print(f"  LLM fallback chain: {' → '.join(providers)}")
         print(f"  Database: {settings.database_url[:50]}...")
-        print(f"  Agent WS: {settings.agent_ws}")
         print(f"  Data dir: {settings.data_dir}")
         print(f"  Guild allowlist: {len(settings.allowed_guild_ids)} guilds")
         print(f"  User allowlist: {len(settings.allowed_user_ids)} users")
@@ -185,21 +147,15 @@ async def main() -> None:
 
     await check_extras()
 
-    server = await _start_health_server(agent_manager, settings)
-    health_task = asyncio.create_task(server.serve_forever())
-    ws_task = asyncio.create_task(_start_ws_server(agent_manager, settings))
+    server_task = asyncio.create_task(_start_server(agent_manager, settings))
     try:
         bot = SentinelBot(agent_manager=agent_manager, memory=memory, llm=llm, config=settings)
         log.info("Starting Discord bot...")
         await bot.start(settings.discord_token)
     finally:
-        health_task.cancel()
-        ws_task.cancel()
+        server_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await health_task
-            await ws_task
-        server.close()
-        await server.wait_closed()
+            await server_task
 
 
 if __name__ == "__main__":
