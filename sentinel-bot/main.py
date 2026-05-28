@@ -11,6 +11,8 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import websockets
+from websockets.http11 import Response
+from websockets.datastructures import Headers
 
 from bot.client import SentinelBot
 from config import load_settings, validate_config
@@ -81,18 +83,20 @@ async def _start_server(agent_manager, settings) -> None:
     async def process_request(connection, request) -> Any:
         path = request.path if hasattr(request, "path") else "/"
         if path in ("/", "/health"):
-            return 200, [(b"Content-Type", b"text/plain")], b"ok"
+            return Response(200, "OK", Headers(), b"ok")
 
         if path.startswith("/register"):
             qs = urlparse(path).query
             params = parse_qs(qs)
             status, body = await _handle_register_query(params, agent_manager, settings)
-            return status, [(b"Content-Type", b"application/json")], body
+            headers = Headers([(b"Content-Type", b"application/json")])
+            reason = "OK" if status == 200 else ("Bad Request" if status == 400 else "Unauthorized" if status == 401 else "Internal Server Error")
+            return Response(status, reason, headers, body)
 
         if path == "/agent-ws":
             return None  # proceed with WebSocket upgrade
 
-        return 404, [(b"Content-Type", b"text/plain")], b"not found"
+        return Response(404, "Not Found", Headers(), b"not found")
 
     async with websockets.serve(ws_handler, host, port, process_request=process_request):
         log.info("Server listening on http://%s:%s (WS at /agent-ws)", host, port)
