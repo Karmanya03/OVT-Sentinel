@@ -3,6 +3,8 @@ use std::process::Stdio;
 use tokio::process::Command;
 use tokio::sync::watch;
 
+const TUNNEL_TIMEOUT_SECS: u64 = 30;
+
 #[allow(dead_code)]
 pub struct Tunnel {
     public_url: String,
@@ -45,11 +47,14 @@ pub async fn start_ngrok_tunnel(local_port: u16, auth_token: Option<&str>) -> Re
     let public_url;
 
     loop {
-        line_buf.clear();
-        let n = reader
-            .read_line(&mut line_buf)
-            .await
-            .context("failed to read ngrok output")?;
+        let n = tokio::time::timeout(
+            std::time::Duration::from_secs(TUNNEL_TIMEOUT_SECS),
+            reader.read_line(&mut line_buf),
+        )
+        .await
+        .context("ngrok did not establish a tunnel within 30s — check your auth token and network")?
+        .context("failed to read ngrok output")?;
+
         if n == 0 {
             child.wait().await?;
             anyhow::bail!("ngrok exited without establishing a tunnel");
@@ -91,13 +96,27 @@ pub async fn start_ngrok_tunnel(local_port: u16, auth_token: Option<&str>) -> Re
 }
 
 fn extract_ngrok_url(line: &str) -> Option<String> {
-    // ngrok JSON log line: {"lvl":"info","msg":"started tunnel","url":"tcp://0.tcp.ngrok.io:12345"}
-    if !line.contains("started tunnel") {
+    // ngrok v3 JSON log: {"lvl":"info","msg":"started tunnel","url":"tcp://...","obj":{"url":"tcp://..."}}
+    // Accept any line containing "tunnel" in msg and a tcp:// URL
+    let parsed: serde_json::Value = serde_json::from_str(line).ok()?;
+
+    // Only process lines about tunnel status
+    let msg = parsed.get("msg")?.as_str()?;
+    if !msg.contains("tunnel") && !msg.contains(" Tunnel") {
         return None;
     }
-    let parsed: serde_json::Value = serde_json::from_str(line).ok()?;
-    let url = parsed.get("url")?.as_str()?;
-    // Convert tcp://host:port to ws://host:port
+
+    // Try top-level "url" first, then nested "obj.url"
+    let url = parsed
+        .get("url")
+        .or_else(|| parsed.get("obj")?.get("url"))?
+        .as_str()?;
+
+    // Only accept tcp:// tunnels (not http:// from other ngrok features)
+    if !url.starts_with("tcp://") {
+        return None;
+    }
+
     Some(url.replacen("tcp://", "ws://", 1))
 }
 

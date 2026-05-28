@@ -56,7 +56,7 @@ In any channel the bot can see, type `/agent register`:
 
 | Field | What it does |
 |-------|-------------|
-| `tunnel` | `True` for auto-tunnel via bore, `False` for direct connection |
+| `tunnel` | `True` for ngrok auto-tunnel, `False` for direct connection |
 | `label` | Friendly name for your VM (optional) |
 
 The bot replies with your token and the exact command to run on Kali:
@@ -64,7 +64,12 @@ The bot replies with your token and the exact command to run on Kali:
 ```
 📝 Agent Token Generated
 
-Install ngrok (one-time): curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | ...
+Install ngrok (one-time):
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok_amd64.deb -o /tmp/ngrok.deb
+sudo dpkg -i /tmp/ngrok.deb
+
+Set auth token (one-time):
+ngrok config add-authtoken YOUR_TOKEN    # get at https://dashboard.ngrok.com/signup
 
 Run on Kali:
 sentinel-agent --token "f439a7b3..." --tunnel
@@ -72,34 +77,31 @@ sentinel-agent --token "f439a7b3..." --tunnel
 Token: f439a7b3...
 Keep this secret!
 ```
-🚇 TUNNEL ACTIVE: ws://bore.pub:22698
-```
 
 ### 4. Run the Agent on Kali
 
-Copy-paste the command into your Kali terminal:
-
 ```bash
-# First-time ngrok setup (free account at https://dashboard.ngrok.com/signup)
+# First-time ngrok setup (skip if already done)
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok_amd64.deb -o /tmp/ngrok.deb
+sudo dpkg -i /tmp/ngrok.deb
 ngrok config add-authtoken YOUR_TOKEN
 
+# Start the agent
 ./target/release/sentinel-agent --token "f439a7b3..." --tunnel
 ```
 
-The agent prints a public tunnel URL:
+The agent prints:
 ```
 🚇 TUNNEL ACTIVE: ws://0.tcp.ngrok.io:12345
 ```
 
 ### 5. Connect in Discord
 
-Once the agent is running, connect to it with:
-
 ```
 /agent connect ws_url:ws://0.tcp.ngrok.io:12345
 ```
 
-The bot auto-detects it's a tunnel connection.
+Bot replies "Agent Connected" — you're ready.
 
 ### 6. Start Chatting
 
@@ -115,7 +117,7 @@ Everything runs on **your** VM. You're done.
 
 ### Alternative: Direct Connection (no tunnel)
 
-If your Kali has a public IP:
+If Kali has a public IP:
 
 1. `/agent register tunnel:False label:Kali-VM`
 2. On Kali: `./target/release/sentinel-agent --token "..." --bind 0.0.0.0:7331`
@@ -126,77 +128,11 @@ If your Kali has a public IP:
 For air-gapped Kali that connects via WireGuard to a relay VPS:
 
 1. Set up WireGuard between Kali and a relay VPS
-2. On the relay VPS, forward port 7331 to Kali's WireGuard IP:
+2. On the relay VPS, forward port 7331 to Kali's WireGuard IP:  
    `iptables -t nat -A PREROUTING -p tcp --dport 7331 -j DNAT --to-destination 10.0.0.2:7331`
 3. `/agent register tunnel:False label:Kali-VM`
 4. On Kali: `./target/release/sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf`
 5. `/agent connect ws_url:ws://RELAY_VPS_IP:7331`
-/agent connect tunnel:True label:Kali-VM
-```
-
-| Field | What it does |
-|-------|-------------|
-| `tunnel` | `True` for auto-tunnel via bore, `False` for direct connection |
-| `label` | Friendly name for your VM (optional) |
-| `ws_url` | Only needed for direct connection (when `tunnel: False`) |
-| `token` | Leave blank — bot generates one automatically |
-
-The bot replies with the exact command to run on your Kali VM:
-
-```
-📝 Agent Registered (Offline)
-
-Quick start (auto-tunnel):
-```
-# Install bore (one-time)
-cargo install bore-cli
-
-sentinel-agent --token "f439a7b3..." --tunnel --bot-register-url "https://your-app.koyeb.app/register"
-```
-No /agent connect needed — the bot will receive the tunnel URL automatically.
-```
-
-### 4. Run the Command on Kali
-
-Copy-paste the command from Discord into your Kali terminal:
-
-```bash
-# Install bore (one-time only)
-cargo install bore-cli
-
-# Run the agent (copy from Discord)
-./target/release/sentinel-agent --token "f439a7b3..." --tunnel
-```
-
-The agent creates a tunnel, POSTs its URL to the bot, and you're connected.
-
-### 5. Start Chatting
-
-```
-/chat enumerate the domain
-/run enum-all
-/screenshot
-```
-
-Everything runs on **your** VM. You're done.
-
----
-
-### Alternative: Direct Connection (no tunnel)
-
-If your Kali has a public IP:
-
-```
-/agent connect ws_url:ws://YOUR_PUBLIC_IP:7331 tunnel:False label:Kali-VM
-```
-
-Bot replies with a plain command to start the agent directly.
-
-### Alternative: WireGuard Mesh
-
-For air-gapped Kali that connects via WireGuard to a relay VPS:
-
-1. Set up WireGuard between Kali and a cheap VPS
 2. On the VPS, forward port 7331 to Kali's WireGuard IP:
    `iptables -t nat -A PREROUTING -p tcp --dport 7331 -j DNAT --to-destination 10.0.0.2:7331`
 3. On the relay VPS, set `BOT_PUBLIC_URL=https://relay-vps-ip:7331`
