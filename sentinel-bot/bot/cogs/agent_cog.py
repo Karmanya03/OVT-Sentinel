@@ -50,10 +50,16 @@ class AgentCog(commands.Cog):
             else:
                 # Show startup instruction with the token so the user can start their agent
                 if tunnel:
-                    cmd = f"sentinel-agent --token \"{agent_token}\" --tunnel"
+                    register_url = self.bot.bot_config.bot_public_url
+                    if register_url:
+                        register_flag = f' --bot-register-url "{register_url}/register"'
+                        extra = f"No `/agent connect` needed — the bot will receive the tunnel URL automatically."
+                    else:
+                        register_flag = ""
+                        extra = f"After starting, copy the tunnel URL from terminal and run:\n`/agent connect ws_url:<tunnel-url> tunnel:True`"
+                    cmd = f"sentinel-agent --token \"{agent_token}\" --tunnel{register_flag}"
                     instructions = (
-                        f"**Quick start (auto-tunnel):**\n```\n# Install bore (one-time)\ncargo install bore-cli\n\n{cmd}\n```\n"
-                        f"No `/agent connect` needed — the bot will receive the tunnel URL automatically."
+                        f"**Quick start (auto-tunnel):**\n```\n# Install bore (one-time)\ncargo install bore-cli\n\n{cmd}\n```\n{extra}"
                     )
                 else:
                     cmd = f"sentinel-agent --token \"{agent_token}\""

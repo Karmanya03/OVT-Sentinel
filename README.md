@@ -46,81 +46,49 @@ cd OVT-Sentinel/sentinel-agent
 cargo build --release
 ```
 
-### 3. Run the Agent — Pick Your Connection Mode
+### 3. Connect in Discord
 
-Choose the option that matches your Kali's network setup:
+In any channel the bot can see, type `/agent connect`:
 
-<details open>
-<summary><b>🔄 A) Auto-tunnel (bore) — Kali has outbound internet</b></summary>
+```
+/agent connect tunnel:True label:Kali-VM
+```
 
-Works through NAT, host-only, VPNs — any setup where Kali can reach the internet.
+| Field | What it does |
+|-------|-------------|
+| `tunnel` | `True` for auto-tunnel via bore, `False` for direct connection |
+| `label` | Friendly name for your VM (optional) |
+| `ws_url` | Only needed for direct connection (when `tunnel: False`) |
+| `token` | Leave blank — bot generates one automatically |
 
-```bash
-# Install bore once
+The bot replies with the exact command to run on your Kali VM:
+
+```
+📝 Agent Registered (Offline)
+
+Quick start (auto-tunnel):
+```
+# Install bore (one-time)
 cargo install bore-cli
 
-# Run with auto-tunnel + bot registration
-./target/release/sentinel-agent \
-  --token "your-secure-token" \
-  --tunnel \
-  --bot-register-url "https://your-app.koyeb.app/register"
+sentinel-agent --token "f439a7b3..." --tunnel --bot-register-url "https://your-app.koyeb.app/register"
+```
+No /agent connect needed — the bot will receive the tunnel URL automatically.
 ```
 
-Prints:
-```
-🚇 TUNNEL ACTIVE: ws://bore.pub:22698
-[+] Registered tunnel URL with bot
-```
+### 4. Run the Command on Kali
 
-**No `/agent connect` needed** — the bot already knows your address.
-</details>
-
-<details>
-<summary><b>🔒 B) WireGuard mesh — Kali is isolated, connects via WireGuard to a relay</b></summary>
-
-For truly air-gapped Kali that can only reach a WireGuard peer (e.g., a cheap VPS).
+Copy-paste the command from Discord into your Kali terminal:
 
 ```bash
-# On the VPS, forward port 7331 to Kali's WireGuard IP:
-#   iptables -t nat -A PREROUTING -p tcp --dport 7331 -j DNAT --to-destination 10.0.0.2:7331
+# Install bore (one-time only)
+cargo install bore-cli
 
-./target/release/sentinel-agent \
-  --token "your-secure-token" \
-  --wireguard /etc/wireguard/ad_lab.conf \
-  --bot-register-url "https://your-app.koyeb.app/register" (Optional)
+# Run the agent (copy from Discord)
+./target/release/sentinel-agent --token "f439a7b3..." --tunnel
 ```
 
-Prints:
-```
-🔒 WIREGUARD ACTIVE: 10.0.0.2
-[+] Registered tunnel URL with bot
-```
-
-Agent auto-cleans up `wg-quick down` on shutdown.
-</details>
-
-<details>
-<summary><b>🌐 C) Direct connection — Kali has a public IP</b></summary>
-
-```bash
-./target/release/sentinel-agent --token "your-secure-token"
-```
-</details>
-
-### 4. Connect in Discord
-
-**If you used `--bot-register-url`** (options A or B): skip this step — the bot already knows your URL.
-
-**If you didn't** (option C or no `--bot-register-url`): type what the agent printed:
-
-```
-/agent connect ws://bore.pub:22698
-```
-
-The bot replies:
-```
-✅ Agent connected — Kali VM
-```
+The agent creates a tunnel, POSTs its URL to the bot, and you're connected.
 
 ### 5. Start Chatting
 
@@ -131,6 +99,33 @@ The bot replies:
 ```
 
 Everything runs on **your** VM. You're done.
+
+---
+
+### Alternative: Direct Connection (no tunnel)
+
+If your Kali has a public IP:
+
+```
+/agent connect ws_url:ws://YOUR_PUBLIC_IP:7331 tunnel:False label:Kali-VM
+```
+
+Bot replies with a plain command to start the agent directly.
+
+### Alternative: WireGuard Mesh
+
+For air-gapped Kali that connects via WireGuard to a relay VPS:
+
+1. Set up WireGuard between Kali and a cheap VPS
+2. On the VPS, forward port 7331 to Kali's WireGuard IP:
+   `iptables -t nat -A PREROUTING -p tcp --dport 7331 -j DNAT --to-destination 10.0.0.2:7331`
+3. On the relay VPS, set `BOT_PUBLIC_URL=https://relay-vps-ip:7331`
+4. In Discord: `/agent connect tunnel:False ws_url:ws://relay-vps-ip:7331 label:Kali-VM`
+
+The agent command from Discord:
+```
+sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf
+```
 
 ---
 

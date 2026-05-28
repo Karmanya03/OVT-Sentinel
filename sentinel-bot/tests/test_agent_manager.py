@@ -28,6 +28,7 @@ class TestAgentManager:
             instance.connect = AsyncMock()
             instance.is_connected = True
             instance.hostname = ""
+            instance.tunnel_url = None
             status_mock = MagicMock()
             status_mock.payload = {"hostname": "vm1"}
             instance.get_status = AsyncMock(return_value=status_mock)

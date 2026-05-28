@@ -26,6 +26,8 @@ services:
         value: "true"
       - key: LAZY_AGENT_CONNECT
         value: "true"
+      - key: BOT_PUBLIC_URL
+        value: https://cloudy-cairistiona-karmanya03-f923e767.koyeb.app/
       - key: LOG_LEVEL
         value: INFO
     scalings:

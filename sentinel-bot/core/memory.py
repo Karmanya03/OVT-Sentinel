@@ -143,6 +143,9 @@ class SessionMemory:
     async def get_agent(self, user_id: str) -> Optional[dict]:
         return self._fetchone("SELECT * FROM agents WHERE user_id = :user_id", user_id=user_id)
 
+    async def get_agent_by_token(self, token: str) -> Optional[dict]:
+        return self._fetchone("SELECT * FROM agents WHERE token = :token", token=token)
+
     async def delete_agent(self, user_id: str) -> None:
         self._execute("DELETE FROM agents WHERE user_id = :user_id", user_id=user_id)
 

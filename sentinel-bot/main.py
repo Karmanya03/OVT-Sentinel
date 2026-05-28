@@ -89,15 +89,26 @@ async def _handle_register(body: str, agent_manager: AgentManager, settings) -> 
     if not url or not url.startswith("ws"):
         return 400, json.dumps({"error": "missing or invalid 'url'"}).encode()
 
-    if not settings.sentinel_token or token != settings.sentinel_token:
-        return 401, json.dumps({"error": "invalid token"}).encode()
+    # Accept global sentinel_token OR any per-agent token from the DB
+    if not token:
+        return 401, json.dumps({"error": "missing token"}).encode()
+
+    agent_row = None
+    if settings.sentinel_token and token == settings.sentinel_token:
+        # Global bootstrap token — map to "default" user
+        user_id = "default"
+    else:
+        agent_row = await agent_manager.memory.get_agent_by_token(token)
+        if not agent_row:
+            return 401, json.dumps({"error": "invalid token"}).encode()
+        user_id = agent_row["user_id"]
 
     try:
-        await agent_manager.memory.save_agent("default", url, settings.sentinel_token, label="auto-registered")
-        existing = agent_manager._agents.get("default")
-        if existing:
-            existing.ws_url = url
-        log.info("Agent auto-registered tunnel URL: %s", url)
+        label = agent_row.get("label", "") if agent_row else "auto-registered"
+        await agent_manager.memory.save_agent(user_id, url, token, label=label)
+        # Create or update the agent client and attempt connection
+        await agent_manager.register_agent(user_id, url, token, label=label, connect=settings.lazy_agent_connect is False)
+        log.info("Agent for user %s registered tunnel URL: %s", user_id[:8], url)
         return 200, json.dumps({"status": "ok", "url": url}).encode()
     except Exception as e:
         log.error("Agent registration failed: %s", e)
