@@ -475,30 +475,7 @@ class LLMBrain:
     async def analyze_image(self, image_bytes: bytes, prompt: str = "Analyze this screenshot from a pentest VM. What do you see? Identify any tools, terminals, commands, or security-relevant information.") -> str:
         providers = self._init_all_providers()
         for name, llm, tools in providers:
-            if name == "gemini":
-                try:
-                    from google.genai import types
-
-                    response = await self._call_with_retry(
-                        lambda: llm.aio.models.generate_content(
-                            model=self.config.gemini_model,
-                            contents=[
-                                prompt,
-                                types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-                            ],
-                            config=types.GenerateContentConfig(
-                                temperature=0.2,
-                                max_output_tokens=8192,
-                                system_instruction=self.system_prompt,
-                            ),
-                        ),
-                        timeout=60.0,
-                    )
-                    return response.text
-                except Exception as e:
-                    log.warning("Gemini image analysis failed (%s), trying next provider", e)
-                    continue
-            elif name == "groq":
+            if name == "groq":
                 try:
                     import base64
                     encoded = base64.b64encode(image_bytes).decode("utf-8")
@@ -525,6 +502,29 @@ class LLMBrain:
                     return response.content if hasattr(response, "content") else str(response)
                 except Exception as e:
                     log.warning("Groq image analysis failed (%s), trying next provider", e)
+                    continue
+            elif name == "gemini":
+                try:
+                    from google.genai import types
+
+                    response = await self._call_with_retry(
+                        lambda: llm.aio.models.generate_content(
+                            model=self.config.gemini_model,
+                            contents=[
+                                prompt,
+                                types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                            ],
+                            config=types.GenerateContentConfig(
+                                temperature=0.2,
+                                max_output_tokens=8192,
+                                system_instruction=self.system_prompt,
+                            ),
+                        ),
+                        timeout=60.0,
+                    )
+                    return response.text
+                except Exception as e:
+                    log.warning("Gemini image analysis failed (%s), trying next provider", e)
                     continue
         return "Image analysis requires a vision-capable provider (Gemini or Groq with Llama 4). Configure GEMINI_API_KEY, GOOGLE_API_KEY, or GROQ_API_KEY."
 

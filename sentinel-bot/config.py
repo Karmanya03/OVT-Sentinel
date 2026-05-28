@@ -59,7 +59,7 @@ class Settings:
     agent_ws_port: int = 8002
 
     # Preferred provider fallback order: try Cerebras first, then Groq, then Gemini, then others
-    PROVIDER_PRIORITY = ["cerebras", "groq", "gemini", "nvidia", "minimax", "openai", "sambanova", "ollama"]
+    PROVIDER_PRIORITY = ["nvidia", "cerebras", "groq", "gemini", "minimax", "openai", "sambanova", "ollama"]
 
     def provider_candidates(self) -> list[str]:
         key_map = {
