@@ -67,7 +67,8 @@ def _resolve_tool_calling_agent_factory():
             return factory
         except Exception:
             continue
-    raise RuntimeError("No tool-calling agent factory found in installed langchain. Try upgrading langchain.")
+    # Not fatal; return None so callers can run without agent tooling
+    return None
 
 
 def _resolve_agent_executor_class():
@@ -84,7 +85,8 @@ def _resolve_agent_executor_class():
             return cls
         except Exception:
             continue
-    raise RuntimeError("No AgentExecutor class found in installed langchain. Try upgrading langchain or installing langchain-agents compat package.")
+    # Not fatal; return None so callers can run without an AgentExecutor
+    return None
 
 
 def _load_prompts() -> tuple[str, str]:
@@ -124,8 +126,19 @@ class LLMBrain:
         self._current_provider = self._providers[0][0]
         return self._providers
 
+    def _truncate_text(self, text: str, limit: int) -> str:
+        text = text or ""
+        if len(text) <= limit:
+            return text
+        return text[: limit - 24] + "\n...[truncated]..."
+
+    def _trim_chat_history(self, chat_history: list, max_messages: int = 6):
+        if len(chat_history) <= max_messages:
+            return chat_history
+        return chat_history[-max_messages:]
+
     def _init_single(self, provider: str) -> Optional[tuple]:
-        if provider == "gemini" and self.config.gemini_api_key:
+        if provider == "gemini" and (self.config.gemini_api_key or self.config.google_api_key):
             return self._init_gemini()
         elif provider == "groq" and self.config.groq_api_key:
             return self._init_groq()
@@ -143,6 +156,20 @@ class LLMBrain:
                 model=self.config.sambanova_model,
                 label="SambaNova",
             )
+        elif provider == "nvidia" and self.config.nvidia_api_key:
+            return self._init_openai_compat(
+                base_url=self.config.nvidia_base_url,
+                api_key=self.config.nvidia_api_key,
+                model=self.config.nvidia_model,
+                label="NVIDIA",
+            )
+        elif provider == "minimax" and self.config.nvidia_api_key:
+            return self._init_openai_compat(
+                base_url=self.config.nvidia_base_url,
+                api_key=self.config.nvidia_api_key,
+                model=self.config.minimax_model,
+                label="MiniMax",
+            )
         elif provider == "cerebras" and self.config.cerebras_api_key:
             return self._init_openai_compat(
                 base_url="https://api.cerebras.ai/v1",
@@ -155,17 +182,13 @@ class LLMBrain:
         return None
 
     def _init_gemini(self):
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
 
-        genai.configure(api_key=self.config.gemini_api_key)
+        gemini_api_key = self.config.gemini_api_key or self.config.google_api_key
+        client = genai.Client(api_key=gemini_api_key)
 
-        model = genai.GenerativeModel(
-            model_name=self.config.gemini_model,
-            system_instruction=self.system_prompt,
-            generation_config={"temperature": 0.2, "max_output_tokens": 8192},
-        )
-
-        tools_list = None
+        tools_bundle = None
         if self.config.use_agent_tools:
             from core.tools import build_langchain_tools
             langchain_tools = build_langchain_tools()
@@ -186,16 +209,17 @@ class LLMBrain:
                         params["properties"][pname] = {"type": ptype, "description": pinfo.get("description", "")}
                         if pname in schema.get("required", []):
                             params["required"].append(pname)
-                gemini_tool_defs.append({
-                    "name": lc_tool.name,
-                    "description": getattr(lc_tool, "description", "")[:500],
-                    "parameters": params,
-                })
+                gemini_tool_defs.append(
+                    types.FunctionDeclaration(
+                        name=lc_tool.name,
+                        description=getattr(lc_tool, "description", "")[:500],
+                        parameters_json_schema=params,
+                    )
+                )
             if gemini_tool_defs:
-                tools_list = [{"function_declarations": gemini_tool_defs}]
+                tools_bundle = [types.Tool(function_declarations=gemini_tool_defs)]
 
-        model.tools = tools_list
-        return model, tools_list
+        return client, tools_bundle
 
     def _init_groq(self):
         from langchain_groq import ChatGroq
@@ -246,9 +270,17 @@ class LLMBrain:
             ])
 
             agent_factory = _resolve_tool_calling_agent_factory()
+            if not agent_factory:
+                log.warning("Tool-calling agent factory not available in langchain; running without agent tools")
+                return llm, None
+
             agent = agent_factory(llm, tools, prompt)
 
             AgentExecutor = _resolve_agent_executor_class()
+            if not AgentExecutor:
+                log.warning("AgentExecutor class not available in langchain; running without agent executor")
+                return llm, None
+
             executor = AgentExecutor(agent=agent, tools=tools, verbose=False, max_iterations=8, max_execution_time=180)
             return executor, tools
         return llm, None
@@ -276,27 +308,53 @@ class LLMBrain:
         err_str = str(e).lower()
         return any(k in err_str for k in ("rate", "429", "quota", "overloaded", "unavailable", "503", "500", "timeout", "retry", "limit", "exhausted"))
 
-    async def _chat_gemini(self, model, tools_list, session_id: str, user_id: str, message: str) -> str:
-        import google.generativeai as genai
-        chat = model.start_chat(enable_automatic_function_calling=False)
+    async def _chat_gemini(self, client, tools_bundle, session_id: str, user_id: str, message: str) -> str:
+        from google.genai import types
 
         session_ctx = {}
+        contents = []
         if self.memory:
             session_ctx = await self.memory.get_session_context(session_id)
             history = await self.memory.get_chat_history(session_id, limit=15)
             for h in history:
                 role = "user" if h["role"] == "user" else "model"
-                chat.history.append({"role": role, "parts": [{"text": h["content"]}]})
+                contents.append(
+                    types.Content(
+                        role=role,
+                        parts=[types.Part.from_text(text=self._truncate_text(h["content"], 4000))],
+                    )
+                )
 
         context_block = self._build_context_block(session_ctx)
-        full_message = f"{context_block}\n\n{message}" if context_block else message
+        context_block = self._truncate_text(context_block, 5000)
+        full_message = self._truncate_text(f"{context_block}\n\n{message}" if context_block else message, 6000)
+        contents.append(full_message)
 
         max_turns = 8
         final_response = None
+        tool_map = None
+        if tools_bundle:
+            from core.tools import build_langchain_tools
+
+            tool_map = {tool.name: tool for tool in build_langchain_tools()}
+
         for turn in range(max_turns):
             try:
+                config_kwargs = {
+                    "system_instruction": self.system_prompt,
+                    "temperature": 0.2,
+                    "max_output_tokens": 8192,
+                }
+                if tools_bundle:
+                    config_kwargs["tools"] = tools_bundle
+                    config_kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)
+
                 response = await self._call_with_retry(
-                    lambda: chat.send_message_async(full_message if turn == 0 else "Continue."),
+                    lambda: client.aio.models.generate_content(
+                        model=self.config.gemini_model,
+                        contents=contents,
+                        config=types.GenerateContentConfig(**config_kwargs),
+                    ),
                     timeout=120.0,
                 )
             except Exception:
@@ -304,33 +362,44 @@ class LLMBrain:
                     raise
                 break
 
-            if not response.candidates or not response.candidates[0].content.parts:
-                break
-
-            part = response.candidates[0].content.parts[0]
-            if part.function_call is None and not part.text:
-                break
-
             final_response = response
 
-            if part.function_call:
-                fc = part.function_call
-                tool_name = fc.name
-                tool_args = {k: v for k, v in fc.args.items()}
+            function_calls = list(getattr(response, "function_calls", None) or [])
+            if not function_calls:
+                break
+
+            if not tools_bundle:
+                break
+
+            if hasattr(response, "candidates") and response.candidates:
+                contents.append(response.candidates[0].content)
+
+            for function_call in function_calls:
+                call = getattr(function_call, "function_call", function_call)
+                tool_name = getattr(call, "name", "")
+                tool_args = dict(getattr(call, "args", {}) or {})
                 log.info("Gemini function call: %s(%s)", tool_name, tool_args)
 
-                if tools_list and turn < max_turns - 1:
-                    from core.tools import build_langchain_tools
-                    all_tools = {t.name: t for t in build_langchain_tools()}
-                    try:
-                        result = await all_tools[tool_name].ainvoke(tool_args) if tool_name in all_tools else f"Unknown tool: {tool_name}"
-                    except Exception as e:
-                        result = f"Tool error: {e}"
+                try:
+                    if tool_map and tool_name in tool_map:
+                        result = await tool_map[tool_name].ainvoke(tool_args)
+                    else:
+                        result = f"Unknown tool: {tool_name}"
+                except Exception as e:
+                    result = f"Tool error: {e}"
 
-                    chat.history.append({"role": "model", "parts": [{"function_call": {"name": tool_name, "args": fc.args}}]})
-                    chat.history.append({"role": "user", "parts": [{"function_response": {"name": tool_name, "response": {"result": result[:3000]}}}]})
-                    continue
-                break
+                contents.append(
+                    types.Content(
+                        role="tool",
+                        parts=[
+                            types.Part.from_function_response(
+                                name=tool_name,
+                                response={"result": self._truncate_text(str(result), 3000)},
+                            )
+                        ],
+                    )
+                )
+            continue
 
         reply = final_response.text if final_response and hasattr(final_response, "text") else str(final_response or "")
         if self.memory:
@@ -350,8 +419,11 @@ class LLMBrain:
                     chat_history.append(HumanMessage(content=h["content"]))
                 else:
                     chat_history.append(AIMessage(content=h["content"]))
+            chat_history = self._trim_chat_history(chat_history, max_messages=6)
 
         context_block = self._build_context_block(session_ctx)
+        context_block = self._truncate_text(context_block, 5000)
+        message = self._truncate_text(message, 6000)
         context_msg = f"{context_block}\n\n{message}" if context_block else message
 
         is_executor = hasattr(executor, "ainvoke") and hasattr(executor, "agent")
@@ -362,7 +434,8 @@ class LLMBrain:
             )
             reply = response.get("output", str(response))
         else:
-            full_prompt = f"{self.system_prompt}\n\n{context_block}\n\nUser: {message}"
+            system_prompt = self._truncate_text(self.system_prompt, 6000)
+            full_prompt = f"{system_prompt}\n\n{context_block}\n\nUser: {message}"
             result = await self._call_with_retry(lambda: executor.ainvoke(full_prompt), timeout=120.0)
             reply = result.content if hasattr(result, "content") else str(result)
 
@@ -404,19 +477,56 @@ class LLMBrain:
         for name, llm, tools in providers:
             if name == "gemini":
                 try:
-                    import PIL.Image, io
-                    image = PIL.Image.open(io.BytesIO(image_bytes))
-                    response = await self._call_with_retry(lambda: llm.generate_content_async([prompt, image]), timeout=60.0)
-                    return response.text
-                except ImportError:
-                    import google.generativeai as genai
-                    blob = genai.types.Blob(mime_type="image/png", data=image_bytes)
-                    response = await self._call_with_retry(lambda: llm.generate_content_async([prompt, blob]), timeout=60.0)
+                    from google.genai import types
+
+                    response = await self._call_with_retry(
+                        lambda: llm.aio.models.generate_content(
+                            model=self.config.gemini_model,
+                            contents=[
+                                prompt,
+                                types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                            ],
+                            config=types.GenerateContentConfig(
+                                temperature=0.2,
+                                max_output_tokens=8192,
+                                system_instruction=self.system_prompt,
+                            ),
+                        ),
+                        timeout=60.0,
+                    )
                     return response.text
                 except Exception as e:
                     log.warning("Gemini image analysis failed (%s), trying next provider", e)
                     continue
-        return "Image analysis is only supported with the Gemini provider (no Gemini API key configured)."
+            elif name == "groq":
+                try:
+                    import base64
+                    encoded = base64.b64encode(image_bytes).decode("utf-8")
+
+                    if hasattr(llm, "agent"):
+                        chat = llm.agent.llm
+                    else:
+                        chat = llm
+
+                    from langchain_core.messages import HumanMessage
+                    msg = HumanMessage(
+                        content=[
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                            },
+                        ]
+                    )
+                    response = await self._call_with_retry(
+                        lambda: chat.ainvoke([msg]),
+                        timeout=60.0,
+                    )
+                    return response.content if hasattr(response, "content") else str(response)
+                except Exception as e:
+                    log.warning("Groq image analysis failed (%s), trying next provider", e)
+                    continue
+        return "Image analysis requires a vision-capable provider (Gemini or Groq with Llama 4). Configure GEMINI_API_KEY, GOOGLE_API_KEY, or GROQ_API_KEY."
 
     @cached(ttl_secs=300)
     async def analyze_output(self, session_id: str, command: str, output: str) -> str:

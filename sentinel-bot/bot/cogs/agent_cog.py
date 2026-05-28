@@ -22,8 +22,9 @@ class AgentCog(commands.Cog):
         ws_url="WebSocket URL of your agent (e.g. ws://your-vm:7331)",
         label="Optional friendly label for this agent",
         token="Optional agent auth token (if omitted a token will be generated)",
+        tunnel="Set to True if using --tunnel (public URL via bore); False for direct LAN/public IP",
     )
-    async def agent_connect(self, interaction: discord.Interaction, ws_url: str, label: str = "", token: str = "") -> None:
+    async def agent_connect(self, interaction: discord.Interaction, ws_url: str, label: str = "", token: str = "", tunnel: bool = True) -> None:
         await interaction.response.defer(ephemeral=True)
         user_id = str(interaction.user.id)
         # Determine agent token: prefer explicit token param, then global bootstrap token, else generate per-agent token
@@ -48,10 +49,21 @@ class AgentCog(commands.Cog):
                 )
             else:
                 # Show startup instruction with the token so the user can start their agent
-                cmd = f"sentinel-agent --bind 0.0.0.0:7331 --token \"{agent_token}\""
+                if tunnel:
+                    cmd = f"sentinel-agent --token \"{agent_token}\" --tunnel"
+                    instructions = (
+                        f"**Quick start (auto-tunnel):**\n```\n# Install bore (one-time)\ncargo install bore-cli\n\n{cmd}\n```\n"
+                        f"No `/agent connect` needed — the bot will receive the tunnel URL automatically."
+                    )
+                else:
+                    cmd = f"sentinel-agent --token \"{agent_token}\""
+                    instructions = (
+                        f"**Start the agent:**\n```\n{cmd}\n```\n"
+                        f"Make sure your VM is reachable at `{ws_url}` from the internet."
+                    )
                 embed = styled_embed(
                     f"{EMOJIS['warn']} Agent Registered (Offline)",
-                    f"Agent saved but connection failed. It will auto-reconnect on first command.\nURL: `{ws_url}`\n\nStart the agent on your VM with:\n`{cmd}`\n\nKeep this token secret — it authenticates your agent.",
+                    f"Agent saved but connection failed. It will auto-reconnect on first command.\n\n{instructions}\n\nKeep this token secret — it authenticates your agent.\nURL: `{ws_url}`",
                     THEME["warning"],
                     footer=f"{interaction.user.display_name}",
                 )
@@ -85,7 +97,7 @@ class AgentCog(commands.Cog):
         if not row:
             embed = styled_embed(
                 f"{EMOJIS['info']} No Agent Configured",
-                "You haven't connected an attack VM yet.\nUse `/agent connect ws://your-vm:7331` to get started.",
+                "You haven't connected an attack VM yet.\n1. Install bore on Kali: `cargo install bore-cli`\n2. Run: `sentinel-agent --tunnel --token \"<token>\"`\n3. No `/agent connect` needed — auto-registers with the bot.",
                 THEME["info"],
                 footer=f"{interaction.user.display_name}",
             )

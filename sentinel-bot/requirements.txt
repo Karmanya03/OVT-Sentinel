@@ -1,9 +1,10 @@
 discord.py>=2.3.2
-google-generativeai>=0.8.0
-langchain>=0.3.0
-langchain-core>=0.3.0
+google-genai==2.6.0
+# Pin modern LangChain versions with tool-calling support
+langchain==1.3.2
+langchain-core==1.4.0
 langchain-groq>=0.2.0
-langchain-openai>=0.2.0
+langchain-openai==1.2.2
 langchain-ollama>=0.2.0
 websockets>=11.0.3
 python-dotenv>=1.0.0

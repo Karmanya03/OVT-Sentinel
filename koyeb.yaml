@@ -6,7 +6,8 @@ services:
     docker:
       dockerfile: sentinel-bot/Dockerfile
       context: .
-    ports: []
+    ports:
+      - port: 8000
     volumes:
       - name: sentinel-data
         path: /app/data
@@ -15,8 +16,8 @@ services:
         value: /app/data
       - key: AGENT_WS
         value: ws://127.0.0.1:7331
-      - key: LLM_PROVIDER
-        value: gemini
+      - key: GEMINI_MODEL
+        value: models/gemini-2.5-flash
       - key: USE_AGENT_TOOLS
         value: "true"
       - key: USE_WEB_SEARCH

@@ -42,7 +42,11 @@ class AgentManager:
                         client.hostname = hostname
                 except Exception:
                     pass
-                log.info("Agent for user %s connected at %s", user_id[:8], ws_url)
+                if client.tunnel_url and client.tunnel_url != ws_url:
+                    log.info("Agent for user %s tunnel URL: %s", user_id[:8], client.tunnel_url)
+                    await self.memory.save_agent(user_id, client.tunnel_url, token, label)
+                    client.ws_url = client.tunnel_url
+                log.info("Agent for user %s connected at %s", user_id[:8], client.ws_url)
             except Exception as exc:
                 log.warning("Agent for user %s connection failed: %s", user_id[:8], exc)
 

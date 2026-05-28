@@ -33,6 +33,7 @@ pub enum AgentMessage {
     AuthResult {
         success: bool,
         reason: Option<String>,
+        tunnel_url: Option<String>,
     },
     CommandOutput {
         request_id: String,
@@ -184,10 +185,12 @@ mod tests {
         let msg = AgentMessage::AuthResult {
             success: true,
             reason: None,
+            tunnel_url: Some("ws://bore.pub:12345".into()),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("auth_result"));
         assert!(json.contains("true"));
+        assert!(json.contains("bore.pub"));
         let back: AgentMessage = serde_json::from_str(&json).unwrap();
         match back {
             AgentMessage::AuthResult { success, .. } => assert!(success),

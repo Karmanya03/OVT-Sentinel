@@ -1,11 +1,14 @@
 import asyncio
 import json
+import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import websockets
 
 from .protocol import AgentMessage, make_bot_message, parse_agent_message
+
+log = logging.getLogger("sentinel.agent_client")
 
 
 class AgentDisconnected(Exception):
@@ -18,6 +21,7 @@ class AgentClient:
         self.token = token
         self.name = name
         self.hostname: str = ""
+        self.tunnel_url: Optional[str] = None
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._listener_task: Optional[asyncio.Task] = None
         self._request_queues: Dict[str, asyncio.Queue] = {}
@@ -39,6 +43,12 @@ class AgentClient:
                 if msg.payload.get("success") is not True:
                     reason = msg.payload.get("reason", "auth failed")
                     raise RuntimeError(f"agent auth failed: {reason}")
+
+                tunnel = msg.payload.get("tunnel_url")
+                if tunnel:
+                    self.tunnel_url = tunnel
+                    if self.ws_url != tunnel:
+                        log.info("Agent published tunnel URL: %s (was %s)", tunnel, self.ws_url)
 
                 self._connected = True
                 self._listener_task = asyncio.create_task(self._listener())

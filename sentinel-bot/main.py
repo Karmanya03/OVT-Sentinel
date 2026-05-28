@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import contextlib
 import importlib.util
+import json
 import logging
 import os
 import sys
@@ -36,23 +37,37 @@ async def check_extras() -> None:
             log.info("Optional dep '%s' not installed. %s", mod, hint)
 
 
-async def _start_health_server() -> asyncio.AbstractServer:
+async def _start_health_server(agent_manager: AgentManager, settings) -> asyncio.AbstractServer:
     host = os.getenv("HEALTHCHECK_HOST", "0.0.0.0")
     port = int(os.getenv("HEALTHCHECK_PORT", "8000"))
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
-            await reader.read(1024)
-            body = b"ok"
+            raw = await reader.read(4096)
+            text = raw.decode("utf-8", errors="replace")
+            lines = text.split("\r\n")
+            first = lines[0] if lines else ""
+            method, path, _ = first.split(" ", 2) if " " in first else ("", "", "")
+
+            if method == "POST" and path == "/register":
+                body_start = text.find("\r\n\r\n") + 4
+                body_text = text[body_start:] if body_start > 3 else ""
+                status, resp_body = await _handle_register(body_text, agent_manager, settings)
+            else:
+                status, resp_body = 200, b"ok"
+
+            status_text = {200: "OK", 400: "Bad Request", 401: "Unauthorized", 500: "Internal Server Error"}.get(status, "OK")
             response = (
-                "HTTP/1.1 200 OK\r\n"
-                f"Content-Length: {len(body)}\r\n"
-                "Content-Type: text/plain\r\n"
+                f"HTTP/1.1 {status} {status_text}\r\n"
+                f"Content-Length: {len(resp_body)}\r\n"
+                "Content-Type: application/json\r\n"
                 "Connection: close\r\n"
                 "\r\n"
-            ).encode("ascii") + body
+            ).encode("ascii") + (resp_body if isinstance(resp_body, bytes) else resp_body.encode())
             writer.write(response)
             await writer.drain()
+        except Exception as e:
+            log.error("Health server error: %s", e)
         finally:
             writer.close()
             await writer.wait_closed()
@@ -60,6 +75,33 @@ async def _start_health_server() -> asyncio.AbstractServer:
     server = await asyncio.start_server(handle, host, port)
     log.info("Healthcheck server listening on %s:%s", host, port)
     return server
+
+
+async def _handle_register(body: str, agent_manager: AgentManager, settings) -> tuple[int, bytes]:
+    try:
+        data = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        return 400, json.dumps({"error": "invalid json"}).encode()
+
+    token = data.get("token", "")
+    url = data.get("url", "")
+
+    if not url or not url.startswith("ws"):
+        return 400, json.dumps({"error": "missing or invalid 'url'"}).encode()
+
+    if not settings.sentinel_token or token != settings.sentinel_token:
+        return 401, json.dumps({"error": "invalid token"}).encode()
+
+    try:
+        await agent_manager.memory.save_agent("default", url, settings.sentinel_token, label="auto-registered")
+        existing = agent_manager._agents.get("default")
+        if existing:
+            existing.ws_url = url
+        log.info("Agent auto-registered tunnel URL: %s", url)
+        return 200, json.dumps({"status": "ok", "url": url}).encode()
+    except Exception as e:
+        log.error("Agent registration failed: %s", e)
+        return 500, json.dumps({"error": str(e)}).encode()
 
 
 async def main() -> None:
@@ -112,7 +154,7 @@ async def main() -> None:
 
     await check_extras()
 
-    server = await _start_health_server()
+    server = await _start_health_server(agent_manager, settings)
     health_task = asyncio.create_task(server.serve_forever())
     try:
         bot = SentinelBot(agent_manager=agent_manager, memory=memory, llm=llm, config=settings)

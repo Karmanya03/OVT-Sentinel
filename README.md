@@ -24,61 +24,113 @@
 
 ## Get Started
 
-### 1. Invite the Bot
+### 1. Invite the Bot to Your Server
 
-Click the invite link → pick your server → done.
+Click this link → pick your server → done:
 
 ```
 https://discord.com/api/oauth2/authorize?client_id=1509111346824740964&permissions=1099858774022&scope=bot
 ```
 
-No Discord app creation, no hosting, no config.
+No hosting, no config, no Discord Developer account needed.
 
-### 2. Install Rust + Build the Agent
+### 2. Install the Agent on Your VM
 
-Pick your platform and run the one-liner on your attack VM:
-
-<details>
-<summary><b>Linux (Kali/Ubuntu/Debian)</b></summary>
+Open a terminal on your Kali/attack VM and run:
 
 ```bash
-curl -sSf https://sh.rustup.rs | sh -s -- -y && source "$HOME/.cargo/env" && git clone https://github.com/Karmanya03/OVT-Sentinel && cd OVT-Sentinel/sentinel-agent && cargo build --release
+curl -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+git clone https://github.com/Karmanya03/OVT-Sentinel
+cd OVT-Sentinel/sentinel-agent
+cargo build --release
 ```
+
+### 3. Run the Agent — Pick Your Connection Mode
+
+Choose the option that matches your Kali's network setup:
+
+<details open>
+<summary><b>🔄 A) Auto-tunnel (bore) — Kali has outbound internet</b></summary>
+
+Works through NAT, host-only, VPNs — any setup where Kali can reach the internet.
+
+```bash
+# Install bore once
+cargo install bore-cli
+
+# Run with auto-tunnel + bot registration
+./target/release/sentinel-agent \
+  --token "your-secure-token" \
+  --tunnel \
+  --bot-register-url "https://your-app.koyeb.app/register"
+```
+
+Prints:
+```
+🚇 TUNNEL ACTIVE: ws://bore.pub:22698
+[+] Registered tunnel URL with bot
+```
+
+**No `/agent connect` needed** — the bot already knows your address.
 </details>
 
 <details>
-<summary><b>macOS</b></summary>
+<summary><b>🔒 B) WireGuard mesh — Kali is isolated, connects via WireGuard to a relay</b></summary>
+
+For truly air-gapped Kali that can only reach a WireGuard peer (e.g., a cheap VPS).
 
 ```bash
-curl -sSf https://sh.rustup.rs | sh -s -- -y && source "$HOME/.cargo/env" && git clone https://github.com/Karmanya03/OVT-Sentinel && cd OVT-Sentinel/sentinel-agent && cargo build --release
+# On the VPS, forward port 7331 to Kali's WireGuard IP:
+#   iptables -t nat -A PREROUTING -p tcp --dport 7331 -j DNAT --to-destination 10.0.0.2:7331
+
+./target/release/sentinel-agent \
+  --token "your-secure-token" \
+  --wireguard /etc/wireguard/ad_lab.conf \
+  --bot-register-url "https://your-app.koyeb.app/register"
 ```
+
+Prints:
+```
+🔒 WIREGUARD ACTIVE: 10.0.0.2
+[+] Registered tunnel URL with bot
+```
+
+Agent auto-cleans up `wg-quick down` on shutdown.
 </details>
 
 <details>
-<summary><b>Windows (PowerShell)</b></summary>
-
-```powershell
-winget install Rustlang.Rustup; git clone https://github.com/Karmanya03/OVT-Sentinel; Set-Location OVT-Sentinel\sentinel-agent; cargo build --release
-```
-</details>
-
-### 3. Run the Agent
+<summary><b>🌐 C) Direct connection — Kali has a public IP</b></summary>
 
 ```bash
-# Linux / macOS
-./target/release/sentinel-agent --bind 0.0.0.0:7331 --token "your-secure-token"
-
-# Windows
-.\target\release\sentinel-agent.exe --bind 0.0.0.0:7331 --token "your-secure-token"
+./target/release/sentinel-agent --token "your-secure-token"
 ```
+</details>
 
 ### 4. Connect in Discord
 
+**If you used `--bot-register-url`** (options A or B): skip this step — the bot already knows your URL.
+
+**If you didn't** (option C or no `--bot-register-url`): type what the agent printed:
+
 ```
-/agent connect ws://your-vm-ip:7331
+/agent connect ws://bore.pub:22698
 ```
 
-That's it. All commands now route to **your** VM.
+The bot replies:
+```
+✅ Agent connected — Kali VM
+```
+
+### 5. Start Chatting
+
+```
+/chat enumerate the domain
+/run enum-all
+/screenshot
+```
+
+Everything runs on **your** VM. You're done.
 
 ---
 
@@ -166,16 +218,36 @@ That's it. All commands now route to **your** VM.
 - **Loot management** — browse, read, and analyze collected files
 - **Screenshots + browser** — see what's on the VM screen
 
-## LLM Providers (Free Tier)
+## LLM Providers (Free & Paid)
 
-| Provider | API Key Env Var | Model | Free Tier |
-|----------|----------------|-------|-----------|
-| **Gemini** (default) | `GEMINI_API_KEY` | `models/gemini-2.0-flash` | 60 req/min, 1500/day |
-| **Groq** | `GROQ_API_KEY` | `llama-3.3-70b-versatile` | 30 req/min (70B) |
-| **SambaNova** | `SAMBANOVA_API_KEY` | `Meta-Llama-3.1-70B-Instruct` | Free, rate-limited |
-| **Cerebras** | `CEREBRAS_API_KEY` | `llama3.1-70b` | Free, rate-limited |
+| Provider | API Key Env Var | Default Model | Free Tier / Limits |
+|----------|----------------|---------------|-------------------|
+| **Cerebras** | `CEREBRAS_API_KEY` | `Qwen-3-235B-Instruct` | Free, rate-limited |
+| **Groq** | `GROQ_API_KEY` | `meta-llama/llama-4-scout-17b-16e-instruct` | 30 req/min (70B), **supports images** |
+| **Gemini** | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | `models/gemini-2.5-flash` | 60 req/min, 1500/day, **supports images** |
+| **NVIDIA NIM** | `NVIDIA_API_KEY` | `mistralai/mistral-large-3-675b-instruct-2512` | ~40 RPM (no token limit), free, no CC |
+| **MiniMax** (via NVIDIA) | `NVIDIA_API_KEY` | `minimaxai/minimax-m2.7` | Same, chained after NVIDIA |
 | **OpenAI** | `OPENAI_API_KEY` | `gpt-4o-mini` | Paid |
+| **SambaNova** | `SAMBANOVA_API_KEY` | `Meta-Llama-3.1-70B-Instruct` | Free, rate-limited |
 | **Ollama** (local) | — | `llama3.1:70b` | Free, local |
+
+Multiple providers auto-chain as fallback in priority order. No need to set `LLM_PROVIDER` — just add API keys.
+
+**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks two fallback providers: **NVIDIA** (Mistral Large 3 675B) and **MiniMax** (M2.7 230B) — both chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
+
+### Quick Koyeb Env Example
+
+```text
+DISCORD_TOKEN=...
+DATABASE_URL=...
+AGENT_WS=ws://bore.pub:22698
+SENTINEL_TOKEN=...
+GROQ_API_KEY=gsk_...
+CEREBRAS_API_KEY=csk_...
+NVIDIA_API_KEY=nvapi-...
+```
+
+No `LLM_PROVIDER` needed — fallback chain handles it.
 
 ## Security
 
@@ -186,7 +258,8 @@ That's it. All commands now route to **your** VM.
 - No shell injection (process spawning uses argument arrays)
 - Rate limiter per user (10 req/sec default)
 - Web search + fetch for live vulnerability research
-- AI vision screenshot analysis (Gemini)
+- AI vision screenshot analysis (Gemini or Groq Llama 4)
+- Auto-tunnel with `--tunnel` flag (bore.pub) for zero-config remote access
 
 ## Testing
 

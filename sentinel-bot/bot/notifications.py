@@ -34,6 +34,11 @@ def _footer(text: str = "OVT-Sentinel") -> dict:
     return {"text": text, "icon_url": "https://cdn.discordapp.com/emojis/1055804536481648640.png"}
 
 
+def sanitize(text: str) -> str:
+    import re
+    return re.sub(r'[\ud800-\udfff]', '', text)
+
+
 def styled_embed(
     title: str,
     description: str = "",
@@ -43,13 +48,13 @@ def styled_embed(
     timestamp: bool = True,
 ) -> discord.Embed:
     embed = discord.Embed(
-        title=title[:256],
-        description=description[:4096],
+        title=sanitize(title[:256]),
+        description=sanitize(description[:4096]),
         color=color,
     )
     if fields:
         for name, value, inline in fields:
-            embed.add_field(name=name[:256], value=value[:1024], inline=inline)
+            embed.add_field(name=sanitize(name[:256]), value=sanitize(value[:1024]), inline=inline)
     if footer:
         embed.set_footer(text=footer)
     elif timestamp:
@@ -62,8 +67,13 @@ def cmd_embed(title: str, description: str = "", extra_fields: list = None) -> d
     return styled_embed(f"{EMOJIS['cmd']} {title}", description, THEME["success"], extra_fields)
 
 
-def ai_embed(title: str, description: str = "", extra_fields: list = None) -> discord.Embed:
-    return styled_embed(f"{EMOJIS['ai']} {title}", description, THEME["ai"], extra_fields)
+def ai_embed(
+    title: str,
+    description: str = "",
+    extra_fields: list = None,
+    footer: str = None,
+) -> discord.Embed:
+    return styled_embed(f"{EMOJIS['ai']} {title}", description, THEME["ai"], extra_fields, footer=footer)
 
 
 def warn_embed(title: str, description: str = "") -> discord.Embed:

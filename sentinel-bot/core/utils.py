@@ -1,10 +1,15 @@
 import logging
+import re
 import traceback
 from typing import Any, Callable, Optional
 
 import discord
 
 log = logging.getLogger("sentinel.utils")
+
+
+def sanitize_text(text: str) -> str:
+    return re.sub(r'[\ud800-\udfff\ud800-\udbff\udc00-\udfff]', '', text)
 
 
 async def safe_call(interaction: discord.Interaction, coro_factory: Callable[[], Any], label: str = "operation", ephemeral: bool = False) -> Optional[Any]:

@@ -13,7 +13,7 @@ use tokio_native_tls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
-pub async fn run(args: crate::Args, shutdown: Arc<Mutex<bool>>) -> Result<()> {
+pub async fn run(args: crate::Args, shutdown: Arc<Mutex<bool>>, tunnel_url: Option<String>) -> Result<()> {
     let listener = TcpListener::bind(&args.bind).await?;
     let shutdown_notify = Arc::new(Notify::new());
 
@@ -79,13 +79,14 @@ pub async fn run(args: crate::Args, shutdown: Arc<Mutex<bool>>) -> Result<()> {
                 let loot_dir = loot_dir.clone();
                 let tls_acceptor = tls_acceptor.clone();
                 let shutdown = shutdown.clone();
+                let tunnel = tunnel_url.clone();
 
                 tokio::spawn(async move {
                     let result = if let Some(acceptor) = tls_acceptor {
                         match acceptor.accept(stream).await {
                             Ok(tls_stream) => {
                                 match accept_async(tls_stream).await {
-                                    Ok(ws) => handle_connection(ws, token, executor, loot_dir, shutdown).await,
+                                    Ok(ws) => handle_connection(ws, token, executor, loot_dir, shutdown, tunnel).await,
                                     Err(e) => Err(anyhow::anyhow!("WebSocket handshake over TLS failed: {}", e)),
                                 }
                             }
@@ -93,7 +94,7 @@ pub async fn run(args: crate::Args, shutdown: Arc<Mutex<bool>>) -> Result<()> {
                         }
                     } else {
                         match accept_async(stream).await {
-                            Ok(ws) => handle_connection(ws, token, executor, loot_dir, shutdown).await,
+                            Ok(ws) => handle_connection(ws, token, executor, loot_dir, shutdown, tunnel).await,
                             Err(e) => Err(anyhow::anyhow!("WebSocket handshake failed: {}", e)),
                         }
                     };
@@ -120,6 +121,7 @@ async fn handle_connection<S>(
     executor: Arc<CommandExecutor>,
     loot_dir: String,
     _shutdown: Arc<Mutex<bool>>,
+    tunnel_url: Option<String>,
 ) -> Result<()>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -148,6 +150,7 @@ where
                         let auth = AgentMessage::AuthResult {
                             success: true,
                             reason: None,
+                            tunnel_url: tunnel_url.clone(),
                         };
                         let s = serde_json::to_string(&auth)?;
                         ws_tx.lock().await.send(Message::Text(s.into())).await?;
@@ -155,6 +158,7 @@ where
                         let auth = AgentMessage::AuthResult {
                             success: false,
                             reason: Some("invalid token".into()),
+                            tunnel_url: None,
                         };
                         let s = serde_json::to_string(&auth)?;
                         ws_tx.lock().await.send(Message::Text(s.into())).await?;
@@ -165,6 +169,7 @@ where
                     let auth = AgentMessage::AuthResult {
                         success: false,
                         reason: Some("expected auth first".into()),
+                        tunnel_url: None,
                     };
                     let s = serde_json::to_string(&auth)?;
                     ws_tx.lock().await.send(Message::Text(s.into())).await?;
