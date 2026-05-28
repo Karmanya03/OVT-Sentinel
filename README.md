@@ -87,7 +87,7 @@ For truly air-gapped Kali that can only reach a WireGuard peer (e.g., a cheap VP
 ./target/release/sentinel-agent \
   --token "your-secure-token" \
   --wireguard /etc/wireguard/ad_lab.conf \
-  --bot-register-url "https://your-app.koyeb.app/register"
+  --bot-register-url "https://your-app.koyeb.app/register" (Optional)
 ```
 
 Prints:
