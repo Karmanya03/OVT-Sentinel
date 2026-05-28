@@ -13,6 +13,7 @@ from ..notifications import (
     styled_embed, session_embed, ai_embed, cmd_embed, error_embed,
     THEME, EMOJIS,
 )
+from ..paginator import send_paginated, send_paginated_to
 
 log = logging.getLogger("sentinel.session")
 
@@ -181,20 +182,24 @@ class SessionCog(commands.Cog):
         if response is None:
             return
 
-        embed = ai_embed(
-            "OVT-Sentinel Chat",
-            response[:4000],
-            footer=f"{interaction.user.display_name}",
-        )
-        embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url)
-        await target.send(embed=embed)
-
-        if isinstance(target, discord.Thread) and target.id != interaction.channel_id:
+        is_thread = isinstance(target, discord.Thread) and target.id != interaction.channel_id
+        if is_thread:
+            await send_paginated(
+                target, "OVT-Sentinel Chat", response, THEME["ai"],
+                footer=interaction.user.display_name,
+                author_name=interaction.user.display_name,
+                author_icon=interaction.user.display_avatar.url,
+            )
             await interaction.response.send_message(
                 f"Response posted in {target.mention} \u2192", ephemeral=True
             )
-        elif not interaction.response.is_done():
-            await interaction.response.send_message(embed=embed)
+        else:
+            await send_paginated(
+                interaction, "OVT-Sentinel Chat", response, THEME["ai"],
+                footer=interaction.user.display_name,
+                author_name=interaction.user.display_name,
+                author_icon=interaction.user.display_avatar.url,
+            )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -210,16 +215,12 @@ class SessionCog(commands.Cog):
                         response = await self.llm.chat(
                             session_id, str(message.author.id), message.content
                         )
-                        embed = ai_embed(
-                            "OVT-Sentinel Chat",
-                            response[:4000],
-                            footer=f"{message.author.display_name}",
+                        await send_paginated(
+                            message.channel, "OVT-Sentinel Chat", response, THEME["ai"],
+                            footer=message.author.display_name,
+                            author_name=message.author.display_name,
+                            author_icon=message.author.display_avatar.url,
                         )
-                        embed.set_author(
-                            name=message.author.display_name,
-                            icon_url=message.author.display_avatar.url,
-                        )
-                        await message.channel.send(embed=embed)
                     except Exception as e:
                         log.error("Thread chat error: %s", e)
                 return
@@ -243,15 +244,11 @@ class SessionCog(commands.Cog):
                     response = await self.llm.chat(
                         session_id, str(message.author.id), content
                     )
-                    embed = ai_embed(
-                        "OVT-Sentinel Chat",
-                        response[:4000],
-                        footer=f"{message.author.display_name}",
+                    await send_paginated(
+                        target, "OVT-Sentinel Chat", response, THEME["ai"],
+                        footer=message.author.display_name,
+                        author_name=message.author.display_name,
+                        author_icon=message.author.display_avatar.url,
                     )
-                    embed.set_author(
-                        name=message.author.display_name,
-                        icon_url=message.author.display_avatar.url,
-                    )
-                    await target.send(embed=embed)
                 except Exception as e:
                     log.error("Mention chat error: %s", e)

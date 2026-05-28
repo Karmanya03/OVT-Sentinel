@@ -11,6 +11,7 @@ from core.rate_limiter import RateLimiter
 from core.llm_brain import LLMBrain
 from core.utils import safe_call
 from ..notifications import styled_embed, ai_embed, error_embed, THEME
+from ..paginator import send_paginated
 
 
 class BrowserCog(commands.Cog):
@@ -49,8 +50,7 @@ class BrowserCog(commands.Cog):
                     "and what the single best next step should be."
                 )
                 analysis = await self.llm.analyze_image(image_bytes, vision_prompt)
-                embed = ai_embed(f"{screenshot_label} Analysis", analysis[:4000])
-                await interaction.followup.send(embed=embed)
+                await send_paginated(interaction, f"{screenshot_label} Analysis", analysis, THEME["ai"])
             except Exception as e:
                 await interaction.followup.send(f"{screenshot_label} analysis failed: {e}")
 

@@ -17,6 +17,7 @@ from ..notifications import (
     styled_embed, cmd_embed, ai_embed, warn_embed, error_embed,
     THEME, EMOJIS,
 )
+from ..paginator import send_paginated
 
 DESTRUCTIVE_KEYWORDS = [
     "forge", "skeleton-key", "dsrm", "relay", "dump", "exec",
@@ -127,8 +128,7 @@ class RunCog(commands.Cog):
                 lambda: self.llm.analyze_output(session_id, command, full_output),
                 "AI analysis")
             if analysis:
-                analysis_embed = ai_embed("OVT-Sentinel Analysis", analysis[:4000])
-                await interaction.followup.send(embed=analysis_embed)
+                await send_paginated(interaction, "OVT-Sentinel Analysis", analysis, THEME["ai"])
 
             parsed = parse_output(full_output)
             if parsed["kerb_hashes"]:
@@ -181,8 +181,8 @@ class RunCog(commands.Cog):
             elif msg.type == "command_complete":
                 break
         output = "\n".join(output_lines)
-        embed = styled_embed("Doctor Report", f"```\n{output[:3900]}\n```", THEME["info"])
-        await interaction.followup.send(embed=embed)
+        wrapped = f"```\n{output}\n```"
+        await send_paginated(interaction, "Doctor Report", wrapped, THEME["info"])
 
     async def _run_and_send(self, interaction: discord.Interaction, command: str, title: str) -> list[str]:
         await interaction.response.defer()
@@ -195,8 +195,8 @@ class RunCog(commands.Cog):
             elif msg.type == "command_complete":
                 break
         output = "\n".join(output_lines)
-        embed = styled_embed(title, f"```\n{output[:3900]}\n```", THEME["success"])
-        await interaction.followup.send(embed=embed)
+        wrapped = f"```\n{output}\n```"
+        await send_paginated(interaction, title, wrapped, THEME["success"])
         return output_lines
 
     def _get_session_target(self, interaction: discord.Interaction) -> dict:
@@ -294,8 +294,8 @@ class RunCog(commands.Cog):
             elif msg.type == "command_complete":
                 break
         spray_output = "\n".join(spray_lines)
-        embed = styled_embed("Password Spray Results", f"```\n{spray_output[:3900]}\n```", THEME["warning"])
-        await interaction.followup.send(embed=embed)
+        wrapped = f"```\n{spray_output}\n```"
+        await send_paginated(interaction, "Password Spray Results", wrapped, THEME["warning"])
 
     @app_commands.command(name="adcs-scan", description="Run ADCS vulnerability scan")
     async def adcs_scan(self, interaction: discord.Interaction,

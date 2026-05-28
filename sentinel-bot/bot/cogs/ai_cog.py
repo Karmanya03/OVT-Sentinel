@@ -15,6 +15,7 @@ from core.memory import SessionMemory
 from core.rate_limiter import RateLimiter
 from core.web_tools import web_search, web_fetch, search_vulnerabilities
 from ..notifications import styled_embed, ai_embed, warn_embed, error_embed, THEME
+from ..paginator import send_paginated
 
 
 class AICog(commands.Cog):
@@ -42,8 +43,7 @@ class AICog(commands.Cog):
             lambda: self.llm.chat(session_id, str(interaction.user.id), question), "AI response")
         if response is None:
             return
-        embed = ai_embed("OVT-Sentinel", response[:4000])
-        await interaction.followup.send(embed=embed)
+        await send_paginated(interaction, "OVT-Sentinel", response, THEME["ai"])
 
     @app_commands.command(name="analyze", description="Analyze OVT command output with AI")
     @app_commands.describe(command="The OVT command you ran", output="Paste the command output here")
@@ -54,8 +54,7 @@ class AICog(commands.Cog):
             lambda: self.llm.analyze_output(session_id, command, output), "AI analysis")
         if analysis is None:
             return
-        embed = ai_embed(f"Analysis: `{command[:60]}`", analysis[:4000])
-        await interaction.followup.send(embed=embed)
+        await send_paginated(interaction, f"Analysis: `{command[:60]}`", analysis, THEME["ai"])
 
     @app_commands.command(name="path", description="Find attack path in the current graph")
     @app_commands.describe(source="Source user/computer", target="Target (e.g. 'Domain Admins')")
@@ -104,8 +103,7 @@ Give me the exact OVT command with all flags filled in and explain why this is t
             lambda: self.llm.chat(session_id, str(interaction.user.id), prompt), "AI suggestion")
         if suggestion is None:
             return
-        embed = styled_embed("Next Best Move", suggestion[:4000], THEME["warning"])
-        await interaction.followup.send(embed=embed)
+        await send_paginated(interaction, "Next Best Move", suggestion, THEME["warning"])
 
     @app_commands.command(name="mistakes", description="Review what you did wrong this session")
     async def mistakes(self, interaction: discord.Interaction) -> None:
@@ -121,8 +119,7 @@ Be direct and specific. If something was correct, say so briefly."""
             lambda: self.llm.chat(session_id, str(interaction.user.id), prompt), "AI review")
         if review is None:
             return
-        embed = styled_embed("Session Review", review[:4000], THEME["danger"])
-        await interaction.followup.send(embed=embed)
+        await send_paginated(interaction, "Session Review", review, THEME["danger"])
 
     @app_commands.command(name="bloodhound", description="Analyze a BloodHound JSON file from loot with AI")
     @app_commands.describe(filename="BloodHound JSON filename in the loot directory")
@@ -192,12 +189,7 @@ Be direct and specific. If something was correct, say so briefly."""
         if analysis is None:
             return
 
-        embed = styled_embed(
-            f"BloodHound Analysis: {filename}",
-            f"**Stats:** {stats}\n\n{analysis[:3500]}",
-            THEME["ai"],
-        )
-        await interaction.followup.send(embed=embed)
+        await send_paginated(interaction, f"BloodHound Analysis: {filename}", f"**Stats:** {stats}\n\n{analysis}", THEME["ai"])
 
         if local_analysis and local_analysis.get("interesting_acls"):
             for acl in local_analysis["interesting_acls"][:5]:
@@ -237,28 +229,21 @@ Be direct and specific. If something was correct, say so briefly."""
                 lines.append(f"{r.get('snippet', '')[:300]}")
                 lines.append(f"<{r.get('url', '')}>")
                 lines.append("")
-        text = "\n".join(lines[:25])
-        if len(text) > 1900:
-            text = text[:1900] + "\n...[truncated]"
-        embed = styled_embed(f"Search Results: {query[:80]}", text, THEME["info"])
-        await interaction.followup.send(embed=embed)
+        text = "\n".join(lines[:50])
+        await send_paginated(interaction, f"Search Results: {query[:80]}", text, THEME["info"])
 
     @app_commands.command(name="cve", description="Look up known CVEs for a Windows Server version or product")
     @app_commands.describe(product="Windows Server version (e.g. ws2019, ws2022, ws2025) or product name")
     async def cve(self, interaction: discord.Interaction, product: str) -> None:
         await interaction.response.defer()
         result = await search_vulnerabilities(product)
-        if len(result) > 1900:
-            result = result[:1900] + "\n...[truncated]"
-        embed = styled_embed(f"Vulnerabilities: {product[:60]}", f"```\n{result}\n```", THEME["danger"])
-        await interaction.followup.send(embed=embed)
+        wrapped = f"```\n{result}\n```"
+        await send_paginated(interaction, f"Vulnerabilities: {product[:60]}", wrapped, THEME["danger"])
 
     @app_commands.command(name="fetch", description="Fetch and read a web page")
     @app_commands.describe(url="URL to fetch")
     async def fetch(self, interaction: discord.Interaction, url: str) -> None:
         await interaction.response.defer()
         content = await web_fetch(url)
-        if len(content) > 1900:
-            content = content[:1900] + "\n...[truncated]"
-        embed = styled_embed(f"Fetched: {url[:80]}", f"```\n{content}\n```", THEME["success"])
-        await interaction.followup.send(embed=embed)
+        wrapped = f"```\n{content}\n```"
+        await send_paginated(interaction, f"Fetched: {url[:80]}", wrapped, THEME["success"])
