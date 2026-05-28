@@ -2,11 +2,12 @@ discord.py>=2.3.2
 google-genai==2.6.0
 # LangChain with tool-calling support (pinned for compatibility)
 langchain==1.3.2
-langchain-core==1.4.0
-langchain-community>=0.3.0,<0.4.0
-langchain-groq>=0.2.0,<0.3.0
+## Remove explicit langchain-core and langchain-community pins to avoid
+## dependency conflicts during Docker build. Allow pip to resolve a
+## compatible langchain-core when installing `langchain`.
+## langchain-groq removed: incompatible with langchain 1.x's langchain-core
 langchain-openai>=1.0.0,<1.5.0
-langchain-ollama>=0.2.0,<0.3.0
+## langchain-ollama removed: incompatible with langchain 1.x's langchain-core
 websockets>=11.0.3
 python-dotenv>=1.0.0
 sqlalchemy>=2.0.0
