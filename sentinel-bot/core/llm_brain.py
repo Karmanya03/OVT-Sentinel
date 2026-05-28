@@ -54,11 +54,12 @@ You have tools to interact with the attack VM. Follow these rules strictly:
 
 
 def _resolve_tool_calling_agent_factory():
-    # Try a few import locations across langchain versions
     candidates = [
         ("langchain.agents", "create_tool_calling_agent"),
         ("langchain.agents.tool_calling_agent", "create_tool_calling_agent"),
         ("langchain.agents", "create_openai_tools_agent"),
+        ("langchain.agents.openai_tools", "create_openai_tools_agent"),
+        ("langchain_community.agents", "create_tool_calling_agent"),
     ]
     for mod, name in candidates:
         try:
@@ -67,7 +68,6 @@ def _resolve_tool_calling_agent_factory():
             return factory
         except Exception:
             continue
-    # Not fatal; return None so callers can run without agent tooling
     return None
 
 
