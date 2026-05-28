@@ -65,8 +65,9 @@ The bot replies with your token and the exact command to run on Kali:
 📝 Agent Token Generated
 
 Install ngrok (one-time):
-curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok_amd64.deb -o /tmp/ngrok.deb
-sudo dpkg -i /tmp/ngrok.deb
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+sudo apt update && sudo apt install ngrok -y
 
 Set auth token (one-time):
 ngrok config add-authtoken YOUR_TOKEN    # get at https://dashboard.ngrok.com/signup
@@ -82,8 +83,9 @@ Keep this secret!
 
 ```bash
 # First-time ngrok setup (skip if already done)
-curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok_amd64.deb -o /tmp/ngrok.deb
-sudo dpkg -i /tmp/ngrok.deb
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+sudo apt update && sudo apt install ngrok -y
 ngrok config add-authtoken YOUR_TOKEN
 
 # Start the agent

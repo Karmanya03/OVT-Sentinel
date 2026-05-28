@@ -38,8 +38,8 @@ class AgentCog(commands.Cog):
             else:
                 extra = "After starting, copy the tunnel URL from terminal and connect:\n`/agent connect ws_url:<tunnel-url>`"
             instructions = (
-                f"**Install ngrok (one-time):** See https://ngrok.com/download\n"
-                f"`curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok_amd64.deb -o /tmp/ngrok.deb && sudo dpkg -i /tmp/ngrok.deb`\n\n"
+                f"**Install ngrok (one-time):**\n"
+                f"```\ncurl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null\necho \"deb https://ngrok-agent.s3.amazonaws.com bookworm main\" | sudo tee /etc/apt/sources.list.d/ngrok.list\nsudo apt update && sudo apt install ngrok\n```\n\n"
                 f"**Set auth token (one-time):** `ngrok config add-authtoken YOUR_TOKEN`\n   Get a free token at https://dashboard.ngrok.com/signup\n\n"
                 f"**Run on Kali:**\n```\n{cmd}\n```\n{extra}"
             )
