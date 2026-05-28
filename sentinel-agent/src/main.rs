@@ -12,6 +12,7 @@ mod protocol;
 mod tunnel;
 use crate::tunnel::register_tunnel;
 mod wireguard;
+mod ws_client;
 mod ws_server;
 
 #[derive(Parser, Debug)]
@@ -59,6 +60,17 @@ pub struct Args {
     /// Brings up the interface on start, tears down on shutdown
     #[arg(long)]
     pub wireguard: Option<String>,
+
+    /// Reverse-connect mode: connect to the bot's WebSocket server as a client
+    /// (e.g. wss://my-bot.koyeb.app:8002/agent-ws).
+    /// No tunnel needed — agent reaches out to the bot.
+    #[arg(long, env = "CONNECT_TO_BOT")]
+    pub connect_to_bot: Option<String>,
+
+    /// If reverse connect fails, fall back to cloudflared tunnel + WS server.
+    /// Requires `--connect-to-bot` and `cloudflared` installed.
+    #[arg(long)]
+    pub fallback_tunnel: bool,
 }
 
 #[tokio::main]
@@ -128,7 +140,42 @@ async fn main() -> Result<()> {
         });
     }
 
-    let tunnel_url = if args.tunnel {
+    // ── Try reverse-connect mode first (--connect-to-bot) ──
+    let mut needs_tunnel = args.tunnel;
+    if let Some(bot_ws_url) = &args.connect_to_bot {
+        tracing::info!("Reverse-connect mode: connecting to bot at {}", bot_ws_url);
+        println!("\n🔗 Connecting to bot: {}\n", bot_ws_url);
+        let reverse_executor = Arc::new(executor::CommandExecutor::new(args.ovt_path.clone()));
+        let result = ws_client::connect_to_bot(
+            bot_ws_url,
+            &args.token,
+            reverse_executor,
+            args.loot_dir.clone(),
+        )
+        .await;
+        match &result {
+            Ok(()) => {
+                tracing::info!("Disconnected from bot");
+                return Ok(());
+            }
+            Err(e) => {
+                if args.fallback_tunnel {
+                    tracing::warn!(
+                        "Reverse connect failed ({}), falling back to tunnel mode",
+                        e
+                    );
+                    println!("\n⚠️ Reverse connect failed. Starting fallback tunnel...\n");
+                    needs_tunnel = true;
+                } else {
+                    tracing::error!("Connection error: {}", e);
+                    return result;
+                }
+            }
+        }
+    }
+
+    // ── Start tunnel if needed (explicit --tunnel or fallback from reverse) ──
+    let tunnel_url = if needs_tunnel {
         let port: u16 = args
             .bind
             .rsplit(':')
@@ -139,15 +186,8 @@ async fn main() -> Result<()> {
         match tunnel::start_cloudflared_tunnel(port).await {
             Ok(tunnel) => {
                 let url = tunnel.public_url().to_string();
-                tracing::info!(
-                    "🌐 Public tunnel: {} → ws://{}",
-                    url,
-                    args.bind
-                );
-                println!(
-                    "\n🚇 TUNNEL ACTIVE: {}\n   Use this URL with /agent connect.\n",
-                    url
-                );
+                tracing::info!("🌐 Public tunnel: {} → ws://{}", url, args.bind);
+                println!("\n🚇 TUNNEL ACTIVE: {}\n   Use this URL with /agent connect.\n", url);
                 if let Some(register_url) = &args.bot_register_url {
                     match register_tunnel(register_url, &url, &args.token).await {
                         Ok(_) => tracing::info!("Registered tunnel URL with bot"),
@@ -155,7 +195,11 @@ async fn main() -> Result<()> {
                     }
                 } else {
                     tracing::info!("No --bot-register-url set; skipping auto-registration.");
-                    println!("   Use /agent connect ws_url:<tunnel-url> to connect.\n");
+                    if args.fallback_tunnel {
+                        println!("   Set BOT_PUBLIC_URL on the server for auto-registration,\n   or use /agent connect ws_url:<tunnel-url> to connect.\n");
+                    } else {
+                        println!("   Use /agent connect ws_url:<tunnel-url> to connect.\n");
+                    }
                 }
                 Some(url)
             }

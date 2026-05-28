@@ -8,14 +8,17 @@ services:
       context: .
     ports:
       - port: 8000
+        protocols: [http]
+      - port: 8002
+        protocols: [http]
     volumes:
       - name: sentinel-data
         path: /app/data
     envs:
       - key: SENTINEL_DATA_DIR
         value: /app/data
-      - key: AGENT_WS
-        value: ws://127.0.0.1:7331
+      - key: AGENT_WS_PORT
+        value: "8002"
       - key: GEMINI_MODEL
         value: models/gemini-2.5-flash
       - key: USE_AGENT_TOOLS

@@ -7,6 +7,9 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
+
+import websockets
 
 from bot.client import SentinelBot
 from config import load_settings, validate_config
@@ -115,6 +118,23 @@ async def _handle_register(body: str, agent_manager: AgentManager, settings) -> 
         return 500, json.dumps({"error": str(e)}).encode()
 
 
+async def _start_ws_server(agent_manager, settings) -> None:
+    host = os.getenv("AGENT_WS_HOST", "0.0.0.0")
+    port = settings.agent_ws_port
+
+    async def handler(websocket: Any) -> None:
+        await agent_manager.handle_ws_connection(websocket)
+
+    async def process_request(path: str, request_headers) -> Any:
+        if path in ("/", "/health"):
+            return 200, [(b"Content-Type", b"text/plain")], b"ok"
+        return None
+
+    async with websockets.serve(handler, host, port, process_request=process_request):
+        log.info("Agent WebSocket server listening on ws://%s:%s/agent-ws", host, port)
+        await asyncio.Future()
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(prog="sentinel-bot", description="OVT-Sentinel Discord Bot")
     parser.add_argument("--validate", action="store_true", help="Validate configuration and exit")
@@ -167,14 +187,17 @@ async def main() -> None:
 
     server = await _start_health_server(agent_manager, settings)
     health_task = asyncio.create_task(server.serve_forever())
+    ws_task = asyncio.create_task(_start_ws_server(agent_manager, settings))
     try:
         bot = SentinelBot(agent_manager=agent_manager, memory=memory, llm=llm, config=settings)
         log.info("Starting Discord bot...")
         await bot.start(settings.discord_token)
     finally:
         health_task.cancel()
+        ws_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await health_task
+            await ws_task
         server.close()
         await server.wait_closed()
 

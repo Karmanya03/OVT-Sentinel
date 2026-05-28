@@ -16,18 +16,25 @@ class AgentDisconnected(Exception):
 
 
 class AgentClient:
-    def __init__(self, ws_url: str, token: str, name: str = "") -> None:
+    def __init__(self, ws_url: str = "", token: str = "", name: str = "") -> None:
         self.ws_url = ws_url
         self.token = token
         self.name = name
         self.hostname: str = ""
         self.tunnel_url: Optional[str] = None
-        self._ws: Optional[websockets.WebSocketClientProtocol] = None
+        self._ws = None  # Will be set by connect() or from_incoming()
         self._listener_task: Optional[asyncio.Task] = None
         self._request_queues: Dict[str, asyncio.Queue] = {}
         self._general_queue: asyncio.Queue = asyncio.Queue()
         self.last_request_id: Optional[str] = None
         self._connected = False
+
+    @classmethod
+    def from_incoming(cls, websocket, token: str, name: str = "") -> "AgentClient":
+        client = cls(token=token, name=name)
+        client._ws = websocket
+        client._connected = True
+        return client
 
     @property
     def is_connected(self) -> bool:

@@ -33,7 +33,7 @@ pub async fn start_cloudflared_tunnel(local_port: u16) -> Result<Tunnel> {
             "Failed to spawn 'cloudflared'. Install from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
         )?;
 
-    // cloudflared writes the tunnel URL to stderr as structured log lines
+    // cloudflared writes structured JSON logs to stderr
     let stderr = child
         .stderr
         .take()
@@ -96,21 +96,54 @@ pub async fn start_cloudflared_tunnel(local_port: u16) -> Result<Tunnel> {
 }
 
 fn extract_cloudflared_url(line: &str) -> Option<String> {
-    // cloudflared prints the URL as:  https://<random>.trycloudflare.com
-    // The line may have leading log timestamp/level and ascii box characters.
-    let trimmed = line.trim();
-    // Find the URL between box characters or at start
-    let start = trimmed.find("https://")?;
-    let rest = &trimmed[start..];
-    let end = rest.find(|c: char| c.is_whitespace() || c == '|' || c == '+').unwrap_or(rest.len());
-    let url = &rest[..end];
+    // cloudflared outputs structured JSON logs like:
+    // {"level":"info","msg":"+-- https://xyz.trycloudflare.com --+","time":"..."}
+    // or {"level":"info","msg":"started tunnel","url":"https://xyz.trycloudflare.com","time":"..."}
+    //
+    // Try JSON parsing first
+    if let Some(url) = extract_from_json(line) {
+        return Some(url);
+    }
 
-    // Must end with trycloudflare.com
-    if !url.contains("trycloudflare.com") {
+    // Fallback: look for https://<anything>.trycloudflare.com in plain text
+    extract_from_text(line)
+}
+
+fn extract_from_json(line: &str) -> Option<String> {
+    let parsed: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+
+    // Check for top-level "url" field
+    let raw_url = parsed
+        .get("url")
+        .or_else(|| parsed.get("obj")?.get("url"))?
+        .as_str()?;
+
+    let raw_url = raw_url.trim().trim_matches('"');
+
+    // Must be a valid tunnel URL (random subdomain, not api.trycloudflare.com)
+    if !raw_url.starts_with("https://") || !raw_url.contains("trycloudflare.com") {
+        return None;
+    }
+    // Reject the api endpoint itself
+    if raw_url.contains("api.trycloudflare.com") {
         return None;
     }
 
-    // Convert https:// to wss:// for WebSocket
+    Some(raw_url.replacen("https://", "wss://", 1))
+}
+
+fn extract_from_text(line: &str) -> Option<String> {
+    // Fallback for plain-text output (ascii box)
+    let trimmed = line.trim();
+    let start = trimmed.find("https://")?;
+    let rest = &trimmed[start..];
+    let end = rest.find(|c: char| c.is_whitespace() || c == '|' || c == '+' || c == '"').unwrap_or(rest.len());
+    let url = rest[..end].trim().trim_matches('"');
+
+    if !url.contains("trycloudflare.com") || url.contains("api.trycloudflare.com") {
+        return None;
+    }
+
     Some(url.replacen("https://", "wss://", 1))
 }
 

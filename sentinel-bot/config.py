@@ -56,6 +56,7 @@ class Settings:
     llm_cache_max_size: int = 1000
     lazy_agent_connect: bool = True
     bot_public_url: str = ""
+    agent_ws_port: int = 8002
 
     # Preferred provider fallback order: try Cerebras first, then Groq, then Gemini, then others
     PROVIDER_PRIORITY = ["cerebras", "groq", "gemini", "nvidia", "minimax", "openai", "sambanova", "ollama"]
@@ -195,4 +196,5 @@ def load_settings() -> Settings:
         llm_cache_max_size=int(os.getenv("LLM_CACHE_MAX_SIZE", "1000")),
         lazy_agent_connect=os.getenv("LAZY_AGENT_CONNECT", "true").lower() == "true",
         bot_public_url=os.getenv("BOT_PUBLIC_URL", ""),
+        agent_ws_port=int(os.getenv("AGENT_WS_PORT", "8002")),
     )

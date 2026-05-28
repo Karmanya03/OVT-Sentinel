@@ -84,8 +84,8 @@ def error_embed(title: str = "Error", description: str = "") -> discord.Embed:
     return styled_embed(f"{EMOJIS['fail']} {title}", description, THEME["danger"])
 
 
-def session_embed(title: str, description: str = "", extra_fields: list = None) -> discord.Embed:
-    return styled_embed(f"{EMOJIS['session']} {title}", description, THEME["neutral"], extra_fields)
+def session_embed(title: str, description: str = "", extra_fields: list = None, footer: str = "") -> discord.Embed:
+    return styled_embed(f"{EMOJIS['session']} {title}", description, THEME["neutral"], extra_fields, footer=footer)
 
 
 def status_embed(title: str, description: str = "", extra_fields: list = None) -> discord.Embed:

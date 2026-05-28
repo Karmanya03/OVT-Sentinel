@@ -19,31 +19,61 @@ class AgentCog(commands.Cog):
 
     @agent_group.command(name="register", description="Generate a token and get the command to run on your Kali VM")
     @app_commands.describe(
-        tunnel="True to include --tunnel (bore auto-tunnel), False for direct connection",
+        mode="Connectivity method (default: reverse with tunnel fallback)",
         label="Optional friendly label for this agent",
     )
-    async def agent_register(self, interaction: discord.Interaction, tunnel: bool = True, label: str = "") -> None:
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="\U0001f504 Reverse (recommended) \u2014 agent connects outbound, auto-fallback to tunnel", value="reverse"),
+        app_commands.Choice(name="\U0001f4e6 Tunnel (cloudflared) \u2014 agent behind NAT, cloudflared required", value="tunnel"),
+        app_commands.Choice(name="\U0001f517 Direct \u2014 raw WS server, needs public IP / port forward", value="direct"),
+    ])
+    async def agent_register(self, interaction: discord.Interaction, mode: str = "reverse", label: str = "") -> None:
         await interaction.response.defer(ephemeral=True)
         user_id = str(interaction.user.id)
         import secrets
         agent_token = secrets.token_hex(32)
         await self.agent_manager.memory.save_agent(user_id, "pending", agent_token, label=label)
 
-        if tunnel:
-            register_url = self.bot.bot_config.bot_public_url
-            register_flag = f' --bot-register-url "{register_url}/register"' if register_url else ""
-            cmd = f"sentinel-agent --token \"{agent_token}\" --tunnel{register_flag}"
-            if register_url:
-                extra = "No `/agent connect` needed — the bot will receive the tunnel URL automatically."
+        bot_url = self.bot.bot_config.bot_public_url
+        register_flag = f' --bot-register-url "{bot_url}/register"' if bot_url else ""
+
+        if mode == "reverse":
+            if not bot_url:
+                instructions = (
+                    f"**Error:** `BOT_PUBLIC_URL` not configured on the server.\n"
+                    f"Set it in Koyeb dashboard or use `mode: Tunnel` instead."
+                )
+            else:
+                ws_url = bot_url.rstrip("/")
+                if ws_url.startswith("https://"):
+                    ws_url = ws_url.replace("https://", "wss://", 1)
+                elif ws_url.startswith("http://"):
+                    ws_url = ws_url.replace("http://", "ws://", 1)
+                ws_url += f":{self.bot.bot_config.agent_ws_port}"
+                cmd = f"sudo ./sentinel-agent --token \"{agent_token}\" --connect-to-bot \"{ws_url}/agent-ws\" --fallback-tunnel{register_flag}"
+                instructions = (
+                    f"**Agent connects outbound to the bot** \u2014 no tunnel needed.\n"
+                    f"If the reverse connection fails, it auto-falls back to a cloudflared tunnel.\n\n"
+                    f"**Install cloudflared (one-time, for fallback):**\n"
+                    f"```\nsudo curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared\nsudo chmod +x /usr/local/bin/cloudflared\n```\n\n"
+                    f"**Run on Kali:**\n```\n{cmd}\n```\n"
+                    f"No `/agent connect` needed \u2014 automagic!"
+                )
+
+        elif mode == "tunnel":
+            cmd = f"sudo ./sentinel-agent --token \"{agent_token}\" --tunnel{register_flag}"
+            if register_flag:
+                extra = "No `/agent connect` needed \u2014 the bot will receive the tunnel URL automatically."
             else:
                 extra = "After starting, copy the tunnel URL from terminal and connect:\n`/agent connect ws_url:<tunnel-url>`"
             instructions = (
                 f"**Install cloudflared (one-time):**\n"
-                f"```\ncurl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared\nchmod +x /usr/local/bin/cloudflared\n```\n\n"
+                f"```\nsudo curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared\nsudo chmod +x /usr/local/bin/cloudflared\n```\n\n"
                 f"**Run on Kali:**\n```\n{cmd}\n```\n{extra}"
             )
-        else:
-            cmd = f"sentinel-agent --token \"{agent_token}\""
+
+        else:  # direct
+            cmd = f"sudo ./sentinel-agent --token \"{agent_token}\""
             instructions = (
                 f"**Run on Kali:**\n```\n{cmd}\n```\n"
                 f"Then connect with your VM's public IP:\n`/agent connect ws_url:ws://YOUR_IP:7331`"

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from typing import Optional
 
@@ -128,6 +129,43 @@ class AgentManager:
             }
             for uid, client in self._agents.items()
         ]
+
+    async def handle_ws_connection(self, websocket) -> None:
+        """Handle an incoming agent WebSocket connection (reverse mode)."""
+        try:
+            raw = await asyncio.wait_for(websocket.recv(), timeout=30)
+        except asyncio.TimeoutError:
+            return
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+
+        token = data.get("token", "") if isinstance(data, dict) else ""
+
+        row = await self.memory.get_agent_by_token(token) if token else None
+        if not row:
+            try:
+                await websocket.send(json.dumps({"type": "auth_result", "success": False, "reason": "invalid token"}))
+            except Exception:
+                pass
+            return
+
+        user_id = row["user_id"]
+        client = AgentClient.from_incoming(websocket, token, name=row.get("label", "") or user_id[:8])
+        self._agents[user_id] = client
+        if not self._active:
+            self._active = user_id
+
+        try:
+            await websocket.send(json.dumps({"type": "auth_result", "success": True}))
+        except Exception:
+            del self._agents[user_id]
+            return
+
+        client._listener_task = asyncio.create_task(client._listener())
+        log.info("Agent for user %s connected via reverse WS", user_id[:8])
 
     async def load_all_from_db(self) -> None:
         rows = await self.memory.list_agents()

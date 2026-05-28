@@ -51,25 +51,28 @@ cargo build --release
 In any channel the bot can see, type `/agent register`:
 
 ```
-/agent register tunnel:True label:Kali-VM
+/agent register tunnel:True label:Kali-VM        # Cloudflare tunnel (requires outbound internet)
+/agent register reverse:True label:Kali-VM       # Reverse connection (agent → bot, recommended)
 ```
 
 | Field | What it does |
 |-------|-------------|
 | `tunnel` | `True` for Cloudflare auto-tunnel, `False` for direct connection |
+| `reverse` | `True` for reverse-connect mode (agent connects to bot, no tunnel needed) |
 | `label` | Friendly name for your VM (optional) |
 
-The bot replies with your token and the exact command to run on Kali:
+**Recommended: Reverse mode** — the agent connects **outbound** to the bot. No tunnel binary, no open ports, no DNS trickery. Works wherever Kali has HTTP/S outbound.
+
+The bot replies with your token and the exact command to run:
 
 ```
 📝 Agent Token Generated
 
-Install cloudflared (one-time):
-curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
-chmod +x /usr/local/bin/cloudflared
+No tunnel needed — agent connects outbound to the bot.
 
 Run on Kali:
-sentinel-agent --token "f439a7b3..." --tunnel
+sudo ./sentinel-agent --token "f439a7b3..." \
+  --connect-to-bot "wss://app.koyeb.app:8002/agent-ws"
 
 Token: f439a7b3...
 Keep this secret!
@@ -77,29 +80,30 @@ Keep this secret!
 
 ### 4. Run the Agent on Kali
 
+**Reverse mode (recommended):**
+```bash
+sudo ./target/release/sentinel-agent --token "f439a7b3..." \
+  --connect-to-bot "wss://app.koyeb.app:8002/agent-ws"
+```
+
+**Cloudflare tunnel mode (if Kali has full internet):**
 ```bash
 # Install cloudflared (one-time)
-curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
-chmod +x /usr/local/bin/cloudflared
+sudo curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+sudo chmod +x /usr/local/bin/cloudflared
 
 # Start the agent
 ./target/release/sentinel-agent --token "f439a7b3..." --tunnel
 ```
 
-The agent prints:
+The agent prints confirmation:
 ```
-🚇 TUNNEL ACTIVE: wss://random-name.trycloudflare.com
-```
-
-### 5. Connect in Discord
-
-Once the agent is running:
-
-```
-/agent connect ws_url:wss://random-name.trycloudflare.com
+🔗 Connecting to bot: wss://app.koyeb.app:8002/agent-ws
 ```
 
-Bot replies "Agent Connected" — you're ready.
+### 5. Agent Auto-Connects
+
+With `--connect-to-bot`, the agent connects automatically. **No `/agent connect` needed.** The bot receives the connection, validates your token, and makes the agent available immediately.
 
 ### 6. Start Chatting
 
@@ -132,13 +136,33 @@ For air-gapped Kali that connects via WireGuard to a relay VPS:
 4. On Kali: `./target/release/sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf`
 5. `/agent connect ws_url:ws://RELAY_VPS_IP:7331`
 
+### Kali Network Tip: Dual NIC Setup
+
+For AD lab testing, give Kali **two** network adapters:
+
+| Adapter | Mode | Subnet | Purpose |
+|---------|------|--------|---------|
+| `eth0` | NAT | `10.0.2.x` (DHCP) | Internet access (tool downloads, bot connection) |
+| `eth2` | Host-only | `192.168.56.x` (static) | AD lab target network |
+
+Use the included `switch-network.sh` to toggle between modes:
+
+```bash
+sudo ./switch-network.sh both   # NAT + lab simultaneously (recommended)
+sudo ./switch-network.sh nat    # Internet only (download tools)
+sudo ./switch-network.sh lab    # Lab only (full isolation)
+```
+
+In `both` mode, eth0 is the default route (internet) and eth2 has `never-default=yes` so lab traffic stays isolated. The agent uses eth0 to reach the bot via `--connect-to-bot`.
+
 ---
 
 ## Discord Commands
 
 | Category | Command | Description |
 |----------|---------|-------------|
-| **Agent** | `/agent connect <ws_url>` | Connect your attack VM to the bot |
+| **Agent** | `/agent register [tunnel/reverse]` | Generate token & get agent command |
+| | `/agent connect <ws_url>` | Connect your attack VM to the bot (tunnel/direct mode) |
 | | `/agent disconnect` | Remove your VM from the bot |
 | | `/agent status` | Check your agent connection status |
 | | `/agent list` | Show your registered agents |
@@ -203,49 +227,52 @@ For air-gapped Kali that connects via WireGuard to a relay VPS:
                     │  │  - Tools (web, search, etc)    │   │
                     │  └──────────────┬────────────────┘   │
                     │                 │                     │
-                    │  ┌──────────────▼────────────────┐   │
-                    │  │  Healthcheck Server (port 8000)│   │
-                    │  │  - POST /register (token auth) │   │
-                    │  │  - GET / (keep-alive ping)     │   │
-                    │  └───────────────────────────────┘   │
-                    │                                      │
-                    │  Hosted on: Koyeb (free tier)        │
+                     │  ┌──────────────┬────────────────┐   │
+                     │  │  Healthcheck (port 8000)          │   │
+                     │  │  - POST /register (token auth)   │   │
+                     │  │  - GET / (keep-alive ping)       │   │
+                     │  ├──────────────────────────────────┤   │
+                     │  │  Agent WS Server (port 8002)      │   │
+                     │  │  - Accepts agent reverse connect  │   │
+                     │  │  - Token auth via database lookup │   │
+                     │  └──────────────────────────────────┘   │
+                     │                                      │
+                     │  Hosted on: Koyeb (free tier)        │
                     │  Database: PostgreSQL (session/chat) │
                     └──────────┬──────────────────────────┘
                                │
-                   ┌───────────┼───────────┐
-                   │           │           │
-              WebSocket   WebSocket   WebSocket
-              (wss://)    (wss://)    (wss://)
-                   │           │           │
-          ┌────────▼──┐ ┌──────▼────┐ ┌───▼────────┐
-          │ Agent A   │ │ Agent B   │ │ Agent C    │
-          │ (User 1)  │ │ (User 2)  │ │ (User 3)   │
-          │ Kali VM   │ │ Kali VM   │ │ Kali VM    │
-          └───────────┘ └───────────┘ └────────────┘
+                    ┌───────────┼───────────┐
+                    │           │           │  ← Agent connects OUTBOUND
+               WebSocket   WebSocket   WebSocket        (reverse mode)
+               (wss://)    (wss://)    (wss://)
+                    ▲           ▲           ▲
+                    │           │           │
+                    │   ┌───────┼───────┐   │
+           ┌────────┘   │       │       │   └────────┐
+           │ Agent A    │  Agent B  │    Agent C    │
+           │ (User 1)   │  (User 2) │   (User 3)    │
+           │ Kali VM    │  Kali VM  │   Kali VM     │
+           └────────────┘  └────────┘   └────────────┘
 
-          Each agent runs sentinel-agent (Rust):
-          ┌──────────────────────────────────────┐
-          │  sentinel-agent                      │
-          │  ┌──────────┐  ┌──────────────────┐  │
-          │  │ WS Server│  │ Tunnel (optional) │  │
-          │  │ (port    │  │ cloudflared →     │  │
-          │  │  7331)   │  │ trycloudflare.com │  │
-          │  └──────────┘  └──────────────────┘  │
-          │  ┌──────────┐  ┌──────────────────┐  │
-          │  │ Executor │  │ Monitor (sysinfo) │  │
-          │  │ (OVT     │  │ - CPU/RAM/disk   │  │
-          │  │  commands)│  │ - Network/procs  │  │
-          │  └──────────┘  └──────────────────┘  │
-          │  ┌──────────┐  ┌──────────────────┐  │
-          │  │ Browser  │  │ Loot Watcher     │  │
-          │  │ (scrn,   │  │ (file system     │  │
-          │  │  browse) │  │  notifications)  │  │
-          │  └──────────┘  └──────────────────┘  │
-          │  ┌──────────────────────────────┐    │
-          │  │ WireGuard (optional mesh)    │    │
-          │  └──────────────────────────────┘    │
-          └──────────────────────────────────────┘
+           Each agent runs sentinel-agent (Rust):
+           ┌──────────────────────────────────────┐
+           │  sentinel-agent                      │
+           │  ┌────────────────┐  ┌─────────────┐ │
+           │  │ Connect to Bot │  │ WS Server   │ │
+           │  │ --connect-to-  │  │ (port 7331, │ │
+           │  │ bot (reverse)  │  │  tunnel)    │ │
+           │  ├────────────────┤  ├─────────────┤ │
+           │  │ Tunnel (opt.)  │  │ Executor    │ │
+           │  │ cloudflared →  │  │ (OVT cmds)  │ │
+           │  │ trycloudflare  │  └─────────────┘ │
+           │  ├────────────────┤  ┌─────────────┐ │
+           │  │ Monitor        │  │ Loot        │ │
+           │  │ (sysinfo)      │  │ Watcher     │ │
+           │  ├────────────────┤  ├─────────────┤ │
+           │  │ Browser        │  │ WireGuard   │ │
+           │  │ (scrn/browse)  │  │ (optional)  │ │
+           │  └────────────────┘  └─────────────┘ │
+           └──────────────────────────────────────┘
 ```
 
 ## What It Does
@@ -264,11 +291,12 @@ For air-gapped Kali that connects via WireGuard to a relay VPS:
 
 | Mode | Flag | Service | Ports | Best for |
 |------|------|---------|-------|----------|
-| **Cloudflare Tunnel** | `--tunnel` | `cloudflared` → `trycloudflare.com` | Outbound-only (HTTPS/443) | Kali behind NAT/firewall |
-| **Direct** | None | — | TCP 7331 (inbound) | Kali with public IP |
+| **Reverse Connect** ⭐ | `--connect-to-bot` | Agent → Bot WS | TCP 443 (WSS) outbound only | **Kali behind NAT/firewall**, no tunnel needed |
+| **Cloudflare Tunnel** | `--tunnel` | `cloudflared` → `trycloudflare.com` | TCP 443 outbound only | Kali with full internet (no DNS blocks) |
+| **Direct** | None | Kali WS server | TCP 7331 (inbound) | Kali on same network as bot |
 | **WireGuard** | `--wireguard` | `wg-quick` | Configurable/VPN | Air-gapped labs with relay VPS |
 
-The Cloudflare Quick Tunnel uses Cloudflare's edge network — the agent makes a single outbound connection to Cloudflare (port 443, never blocked). Cloudflare assigns a random `*.trycloudflare.com` subdomain and proxies traffic through. No account, no config, no open inbound ports needed.
+**Recommended: Reverse Connect** — the agent connects **outbound** to the bot's WebSocket server on port 8002 (WSS). No tunnel binary, no configuration, no open inbound ports. Works any time Kali can reach the bot's server via HTTPS (port 443). The bot authenticates the agent using the token generated by `/agent register`.
 
 ## LLM Providers (Free & Paid)
 
@@ -292,7 +320,8 @@ Multiple providers auto-chain as fallback in priority order. No need to set `LLM
 ```text
 DISCORD_TOKEN=...
 DATABASE_URL=...
-AGENT_WS=ws://bore.pub:22698
+AGENT_WS_PORT=8002
+BOT_PUBLIC_URL=https://your-app.koyeb.app
 SENTINEL_TOKEN=...
 GROQ_API_KEY=gsk_...
 CEREBRAS_API_KEY=csk_...
@@ -301,10 +330,15 @@ NVIDIA_API_KEY=nvapi-...
 
 No `LLM_PROVIDER` needed — fallback chain handles it.
 
+The bot exposes two ports:
+- **8000** — healthcheck HTTP server (Koyeb liveness checks, POST /register for tunnel mode)
+- **8002** — agent WebSocket server (`wss://your-app.koyeb.app:8002/agent-ws`)
+
 ## Security
 
 - **Token-authenticated WebSocket** — HMAC-signed auth between bot and agent
-- **TLS via Cloudflare** — `wss://` tunnels are encrypted end-to-end through Cloudflare's edge
+- **TLS (reverse mode)** — `--connect-to-bot` uses `wss://` (WSS over TLS), encrypted from agent to Koyeb edge
+- **TLS (tunnel mode)** — `wss://` tunnels encrypted end-to-end through Cloudflare's edge
 - **Ephemeral commands** — only you see your agent interactions
 - **Destructive confirmation** — destructive commands need a button click
 - **No shell injection** — process spawning uses argument arrays, not shell strings
