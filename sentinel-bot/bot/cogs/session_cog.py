@@ -162,6 +162,7 @@ class SessionCog(commands.Cog):
     @app_commands.command(name="chat", description="Chat with the AI about AD pentesting")
     @app_commands.describe(message="Your message or question")
     async def chat(self, interaction: discord.Interaction, message: str) -> None:
+        await interaction.response.defer()
         await self._rate_limit(interaction)
         session_id = str(interaction.user.id)
         await self.memory.get_or_create_session(session_id)
