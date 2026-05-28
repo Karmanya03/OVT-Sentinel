@@ -56,7 +56,7 @@ In any channel the bot can see, type `/agent register`:
 
 | Field | What it does |
 |-------|-------------|
-| `tunnel` | `True` for ngrok auto-tunnel, `False` for direct connection |
+| `tunnel` | `True` for Cloudflare auto-tunnel, `False` for direct connection |
 | `label` | Friendly name for your VM (optional) |
 
 The bot replies with your token and the exact command to run on Kali:
@@ -64,13 +64,9 @@ The bot replies with your token and the exact command to run on Kali:
 ```
 📝 Agent Token Generated
 
-Install ngrok (one-time):
-curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-sudo apt update && sudo apt install ngrok -y
-
-Set auth token (one-time):
-ngrok config add-authtoken YOUR_TOKEN    # get at https://dashboard.ngrok.com/signup
+Install cloudflared (one-time):
+curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+chmod +x /usr/local/bin/cloudflared
 
 Run on Kali:
 sentinel-agent --token "f439a7b3..." --tunnel
@@ -82,11 +78,9 @@ Keep this secret!
 ### 4. Run the Agent on Kali
 
 ```bash
-# First-time ngrok setup (skip if already done)
-curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-sudo apt update && sudo apt install ngrok -y
-ngrok config add-authtoken YOUR_TOKEN
+# Install cloudflared (one-time)
+curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+chmod +x /usr/local/bin/cloudflared
 
 # Start the agent
 ./target/release/sentinel-agent --token "f439a7b3..." --tunnel
@@ -94,13 +88,15 @@ ngrok config add-authtoken YOUR_TOKEN
 
 The agent prints:
 ```
-🚇 TUNNEL ACTIVE: ws://0.tcp.ngrok.io:12345
+🚇 TUNNEL ACTIVE: wss://random-name.trycloudflare.com
 ```
 
 ### 5. Connect in Discord
 
+Once the agent is running:
+
 ```
-/agent connect ws_url:ws://0.tcp.ngrok.io:12345
+/agent connect ws_url:wss://random-name.trycloudflare.com
 ```
 
 Bot replies "Agent Connected" — you're ready.
@@ -135,15 +131,6 @@ For air-gapped Kali that connects via WireGuard to a relay VPS:
 3. `/agent register tunnel:False label:Kali-VM`
 4. On Kali: `./target/release/sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf`
 5. `/agent connect ws_url:ws://RELAY_VPS_IP:7331`
-2. On the VPS, forward port 7331 to Kali's WireGuard IP:
-   `iptables -t nat -A PREROUTING -p tcp --dport 7331 -j DNAT --to-destination 10.0.0.2:7331`
-3. On the relay VPS, set `BOT_PUBLIC_URL=https://relay-vps-ip:7331`
-4. In Discord: `/agent connect tunnel:False ws_url:ws://relay-vps-ip:7331 label:Kali-VM`
-
-The agent command from Discord:
-```
-sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf
-```
 
 ---
 
@@ -192,37 +179,79 @@ sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf
 ## Architecture
 
 ```text
-                     One bot, many agents
+                    ┌─────────────────────────────────────┐
+                    │          Discord Cloud               │
+                    │  (slash commands, ephemeral replies) │
+                    └──────────┬──────────────────────────┘
+                               │ HTTPS/WSS
+                               ▼
+                    ┌─────────────────────────────────────┐
+                    │         sentinel-bot                 │
+                    │  ┌───────────────────────────────┐   │
+                    │  │  Discord Gateway (discord.py)   │   │
+                    │  │  - Command routing             │   │
+                    │  │  - Embed builders              │   │
+                    │  │  - Button/modals               │   │
+                    │  └──────────────┬────────────────┘   │
+                    │                 │                     │
+                    │  ┌──────────────▼────────────────┐   │
+                    │  │  Core Services                 │   │
+                    │  │  - LLMBrain (multi-provider)   │   │
+                    │  │  - AgentManager (per-user)     │   │
+                    │  │  - SessionMemory (DB layer)    │   │
+                    │  │  - RateLimiter                 │   │
+                    │  │  - Tools (web, search, etc)    │   │
+                    │  └──────────────┬────────────────┘   │
+                    │                 │                     │
+                    │  ┌──────────────▼────────────────┐   │
+                    │  │  Healthcheck Server (port 8000)│   │
+                    │  │  - POST /register (token auth) │   │
+                    │  │  - GET / (keep-alive ping)     │   │
+                    │  └───────────────────────────────┘   │
+                    │                                      │
+                    │  Hosted on: Koyeb (free tier)        │
+                    │  Database: PostgreSQL (session/chat) │
+                    └──────────┬──────────────────────────┘
+                               │
+                   ┌───────────┼───────────┐
+                   │           │           │
+              WebSocket   WebSocket   WebSocket
+              (wss://)    (wss://)    (wss://)
+                   │           │           │
+          ┌────────▼──┐ ┌──────▼────┐ ┌───▼────────┐
+          │ Agent A   │ │ Agent B   │ │ Agent C    │
+          │ (User 1)  │ │ (User 2)  │ │ (User 3)   │
+          │ Kali VM   │ │ Kali VM   │ │ Kali VM    │
+          └───────────┘ └───────────┘ └────────────┘
 
-        +---------------------+
-        |    Discord Client   |
-        +---------------------+
-                  |
-                  | Slash Commands
-                  v
-        +---------------------+
-        |    sentinel-bot     |
-        |   (hosted once)     |
-        +---------------------+
-         |      |       |    
-         |      |       +-- PostgreSQL
-         |      |           (sessions, agents,
-         |      |            chat history)
-         |      |
-         |      +-- LLM Brain (Gemini / Groq /
-         |           OpenAI / SambaNova / Ollama)
-         |
-    ┌────┴────┬────┬────┐    WebSocket (per user)
-   Agent A  Agent B  Agent C  ...
-   (user1)  (user2)  (user3)
-      |        |        |
-   Kali VM  Kali VM  Kali VM
+          Each agent runs sentinel-agent (Rust):
+          ┌──────────────────────────────────────┐
+          │  sentinel-agent                      │
+          │  ┌──────────┐  ┌──────────────────┐  │
+          │  │ WS Server│  │ Tunnel (optional) │  │
+          │  │ (port    │  │ cloudflared →     │  │
+          │  │  7331)   │  │ trycloudflare.com │  │
+          │  └──────────┘  └──────────────────┘  │
+          │  ┌──────────┐  ┌──────────────────┐  │
+          │  │ Executor │  │ Monitor (sysinfo) │  │
+          │  │ (OVT     │  │ - CPU/RAM/disk   │  │
+          │  │  commands)│  │ - Network/procs  │  │
+          │  └──────────┘  └──────────────────┘  │
+          │  ┌──────────┐  ┌──────────────────┐  │
+          │  │ Browser  │  │ Loot Watcher     │  │
+          │  │ (scrn,   │  │ (file system     │  │
+          │  │  browse) │  │  notifications)  │  │
+          │  └──────────┘  └──────────────────┘  │
+          │  ┌──────────────────────────────┐    │
+          │  │ WireGuard (optional mesh)    │    │
+          │  └──────────────────────────────┘    │
+          └──────────────────────────────────────┘
 ```
 
 ## What It Does
 
 - **One bot, shared by everyone** — invite once, no app creation per user
-- **Per-user agent** — each user registers their own Kali VM via `/agent connect`
+- **Per-user agent** — each user registers their own Kali VM via `/agent register` + `/agent connect`
 - **OVT command execution** — run Overthrone attacks from Discord
 - **Live streaming** — see command output in real-time
 - **Thread-based sessions** — dedicated workspace per session
@@ -230,6 +259,16 @@ sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf
 - **VM monitoring** — CPU, RAM, disk, processes from Discord
 - **Loot management** — browse, read, and analyze collected files
 - **Screenshots + browser** — see what's on the VM screen
+
+### Connectivity Modes
+
+| Mode | Flag | Service | Ports | Best for |
+|------|------|---------|-------|----------|
+| **Cloudflare Tunnel** | `--tunnel` | `cloudflared` → `trycloudflare.com` | Outbound-only (HTTPS/443) | Kali behind NAT/firewall |
+| **Direct** | None | — | TCP 7331 (inbound) | Kali with public IP |
+| **WireGuard** | `--wireguard` | `wg-quick` | Configurable/VPN | Air-gapped labs with relay VPS |
+
+The Cloudflare Quick Tunnel uses Cloudflare's edge network — the agent makes a single outbound connection to Cloudflare (port 443, never blocked). Cloudflare assigns a random `*.trycloudflare.com` subdomain and proxies traffic through. No account, no config, no open inbound ports needed.
 
 ## LLM Providers (Free & Paid)
 
@@ -264,15 +303,14 @@ No `LLM_PROVIDER` needed — fallback chain handles it.
 
 ## Security
 
-- Token-authenticated WebSocket between bot and agent
-- TLS support for encrypted connections (`wss://`)
-- All agent commands are ephemeral (only you see them)
-- Destructive command confirmation buttons
-- No shell injection (process spawning uses argument arrays)
-- Rate limiter per user (10 req/sec default)
-- Web search + fetch for live vulnerability research
-- AI vision screenshot analysis (Gemini or Groq Llama 4)
-- Auto-tunnel with `--tunnel` flag (bore.pub) for zero-config remote access
+- **Token-authenticated WebSocket** — HMAC-signed auth between bot and agent
+- **TLS via Cloudflare** — `wss://` tunnels are encrypted end-to-end through Cloudflare's edge
+- **Ephemeral commands** — only you see your agent interactions
+- **Destructive confirmation** — destructive commands need a button click
+- **No shell injection** — process spawning uses argument arrays, not shell strings
+- **Rate limiter** — 10 req/sec per user default
+- **AI vision** — screenshot analysis via Gemini or Groq Llama 4
+- **Auto-tunnel with `--tunnel`** — Cloudflare Quick Tunnel (no open inbound ports, outbound-only to Cloudflare on port 443)
 
 ## Testing
 

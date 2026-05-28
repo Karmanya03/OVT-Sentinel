@@ -38,9 +38,8 @@ class AgentCog(commands.Cog):
             else:
                 extra = "After starting, copy the tunnel URL from terminal and connect:\n`/agent connect ws_url:<tunnel-url>`"
             instructions = (
-                f"**Install ngrok (one-time):**\n"
-                f"```\ncurl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null\necho \"deb https://ngrok-agent.s3.amazonaws.com bookworm main\" | sudo tee /etc/apt/sources.list.d/ngrok.list\nsudo apt update && sudo apt install ngrok\n```\n\n"
-                f"**Set auth token (one-time):** `ngrok config add-authtoken YOUR_TOKEN`\n   Get a free token at https://dashboard.ngrok.com/signup\n\n"
+                f"**Install cloudflared (one-time):**\n"
+                f"```\ncurl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared\nchmod +x /usr/local/bin/cloudflared\n```\n\n"
                 f"**Run on Kali:**\n```\n{cmd}\n```\n{extra}"
             )
         else:
@@ -82,7 +81,7 @@ class AgentCog(commands.Cog):
                 import secrets
                 agent_token = secrets.token_hex(32)
 
-        is_tunnel = "ngrok" in ws_url
+        is_tunnel = "trycloudflare" in ws_url
 
         try:
             client = await self.agent_manager.register_agent(

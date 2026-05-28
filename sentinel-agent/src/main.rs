@@ -45,13 +45,10 @@ pub struct Args {
     #[arg(long, requires = "tls")]
     pub tls_key: Option<String>,
 
-    /// Auto-create a public tunnel via ngrok (requires `ngrok` installed)
+    /// Auto-create a public tunnel via Cloudflare (requires `cloudflared` installed)
+    /// Uses Cloudflare Quick Tunnel — no account needed, just install cloudflared.
     #[arg(long)]
     pub tunnel: bool,
-
-    /// ngrok auth token (optional — set via `ngrok config add-authtoken` once)
-    #[arg(long, env = "NGROK_TOKEN")]
-    pub ngrok_token: Option<String>,
 
     /// Bot HTTP registration URL (e.g. https://app.koyeb.app/register)
     /// Agent will POST its tunnel URL here on startup for auto-discovery
@@ -139,7 +136,7 @@ async fn main() -> Result<()> {
             .unwrap_or("7331")
             .parse()
             .unwrap_or(7331);
-        match tunnel::start_ngrok_tunnel(port, args.ngrok_token.as_deref()).await {
+        match tunnel::start_cloudflared_tunnel(port).await {
             Ok(tunnel) => {
                 let url = tunnel.public_url().to_string();
                 tracing::info!(
@@ -164,7 +161,7 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 tracing::error!("Failed to start tunnel: {}", e);
-                println!("\n❌ ngrok tunnel failed: {}\n   Falling back to direct connection only.\n", e);
+                println!("\n❌ Cloudflare tunnel failed: {}\n   Falling back to direct connection only.\n", e);
                 None
             }
         }

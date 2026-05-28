@@ -3,7 +3,7 @@ use std::process::Stdio;
 use tokio::process::Command;
 use tokio::sync::watch;
 
-const TUNNEL_TIMEOUT_SECS: u64 = 30;
+const TUNNEL_TIMEOUT_SECS: u64 = 45;
 
 #[allow(dead_code)]
 pub struct Tunnel {
@@ -17,50 +17,50 @@ impl Tunnel {
     }
 }
 
-pub async fn start_ngrok_tunnel(local_port: u16, auth_token: Option<&str>) -> Result<Tunnel> {
-    let port_str = local_port.to_string();
-    let mut args = vec!["tcp", &port_str, "--log=stdout", "--log-level=info"];
-    if let Some(token) = auth_token {
-        args.push("--authtoken");
-        args.push(token);
-    }
-
-    let mut child = Command::new("ngrok")
-        .args(&args)
+pub async fn start_cloudflared_tunnel(local_port: u16) -> Result<Tunnel> {
+    let mut child = Command::new("cloudflared")
+        .args([
+            "tunnel",
+            "--url",
+            &format!("http://localhost:{}", local_port),
+            "--no-autoupdate",
+        ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .context(
-            "Failed to spawn 'ngrok'. Install it from https://ngrok.com/download",
+            "Failed to spawn 'cloudflared'. Install from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
         )?;
 
-    let stdout = child
-        .stdout
+    // cloudflared writes the tunnel URL to stderr as structured log lines
+    let stderr = child
+        .stderr
         .take()
-        .context("failed to capture ngrok stdout")?;
+        .context("failed to capture cloudflared stderr")?;
 
-    let mut reader = tokio::io::BufReader::new(stdout);
+    let mut reader = tokio::io::BufReader::new(stderr);
     use tokio::io::AsyncBufReadExt;
 
     let mut line_buf = String::new();
     let public_url;
 
     loop {
-        let n = tokio::time::timeout(
+        line_buf.clear();
+        let n: usize = tokio::time::timeout(
             std::time::Duration::from_secs(TUNNEL_TIMEOUT_SECS),
             reader.read_line(&mut line_buf),
         )
         .await
-        .context("ngrok did not establish a tunnel within 30s — check your auth token and network")?
-        .context("failed to read ngrok output")?;
+        .context("cloudflared did not establish a tunnel within 45s — check your internet connection")?
+        .context("failed to read cloudflared output")?;
 
         if n == 0 {
             child.wait().await?;
-            anyhow::bail!("ngrok exited without establishing a tunnel");
+            anyhow::bail!("cloudflared exited without establishing a tunnel");
         }
-        let trimmed = line_buf.trim();
-        if let Some(url) = extract_ngrok_url(trimmed) {
+
+        if let Some(url) = extract_cloudflared_url(&line_buf) {
             public_url = url;
             tracing::info!("Tunnel established: {}", public_url);
             break;
@@ -80,8 +80,8 @@ pub async fn start_ngrok_tunnel(local_port: u16, auth_token: Option<&str>) -> Re
                 }
                 status = child.wait() => {
                     match status {
-                        Ok(s) => tracing::warn!("ngrok process exited unexpectedly: {}", s),
-                        Err(e) => tracing::error!("ngrok process error: {}", e),
+                        Ok(s) => tracing::warn!("cloudflared process exited unexpectedly: {}", s),
+                        Err(e) => tracing::error!("cloudflared process error: {}", e),
                     }
                     break;
                 }
@@ -95,29 +95,23 @@ pub async fn start_ngrok_tunnel(local_port: u16, auth_token: Option<&str>) -> Re
     })
 }
 
-fn extract_ngrok_url(line: &str) -> Option<String> {
-    // ngrok v3 JSON log: {"lvl":"info","msg":"started tunnel","url":"tcp://...","obj":{"url":"tcp://..."}}
-    // Accept any line containing "tunnel" in msg and a tcp:// URL
-    let parsed: serde_json::Value = serde_json::from_str(line).ok()?;
+fn extract_cloudflared_url(line: &str) -> Option<String> {
+    // cloudflared prints the URL as:  https://<random>.trycloudflare.com
+    // The line may have leading log timestamp/level and ascii box characters.
+    let trimmed = line.trim();
+    // Find the URL between box characters or at start
+    let start = trimmed.find("https://")?;
+    let rest = &trimmed[start..];
+    let end = rest.find(|c: char| c.is_whitespace() || c == '|' || c == '+').unwrap_or(rest.len());
+    let url = &rest[..end];
 
-    // Only process lines about tunnel status
-    let msg = parsed.get("msg")?.as_str()?;
-    if !msg.contains("tunnel") && !msg.contains(" Tunnel") {
+    // Must end with trycloudflare.com
+    if !url.contains("trycloudflare.com") {
         return None;
     }
 
-    // Try top-level "url" first, then nested "obj.url"
-    let url = parsed
-        .get("url")
-        .or_else(|| parsed.get("obj")?.get("url"))?
-        .as_str()?;
-
-    // Only accept tcp:// tunnels (not http:// from other ngrok features)
-    if !url.starts_with("tcp://") {
-        return None;
-    }
-
-    Some(url.replacen("tcp://", "ws://", 1))
+    // Convert https:// to wss:// for WebSocket
+    Some(url.replacen("https://", "wss://", 1))
 }
 
 pub async fn register_tunnel(register_url: &str, tunnel_ws_url: &str, token: &str) -> Result<()> {
