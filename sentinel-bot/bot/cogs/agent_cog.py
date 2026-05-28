@@ -34,21 +34,25 @@ class AgentCog(commands.Cog):
         agent_token = secrets.token_hex(32)
         await self.agent_manager.memory.save_agent(user_id, "pending", agent_token, label=label)
 
-        bot_url = self.bot.bot_config.bot_public_url
-        register_flag = f' --bot-register-url "{bot_url}/register"' if bot_url else ""
+        raw_url = (self.bot.bot_config.bot_public_url or "").strip().rstrip("/")
+
+        # Normalise: add https:// if no scheme given
+        if raw_url and not raw_url.startswith("http://") and not raw_url.startswith("https://"):
+            raw_url = f"https://{raw_url}"
+
+        if raw_url:
+            register_flag = f' --bot-register-url "{raw_url}/register"'
+        else:
+            register_flag = ""
 
         if mode == "reverse":
-            if not bot_url:
+            if not raw_url:
                 instructions = (
                     f"**Error:** `BOT_PUBLIC_URL` not configured on the server.\n"
                     f"Set it in Koyeb dashboard or use `mode: Tunnel` instead."
                 )
             else:
-                ws_url = bot_url.rstrip("/")
-                if ws_url.startswith("https://"):
-                    ws_url = ws_url.replace("https://", "wss://", 1)
-                elif ws_url.startswith("http://"):
-                    ws_url = ws_url.replace("http://", "ws://", 1)
+                ws_url = raw_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
                 ws_url += f":{self.bot.bot_config.agent_ws_port}"
                 cmd = f"sudo ./sentinel-agent --token \"{agent_token}\" --connect-to-bot \"{ws_url}/agent-ws\" --fallback-tunnel{register_flag}"
                 instructions = (
