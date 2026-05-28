@@ -79,6 +79,9 @@ async def _start_server(agent_manager, settings) -> None:
 
     async def ws_handler(websocket: Any) -> None:
         await agent_manager.handle_ws_connection(websocket)
+        # Keep the handler alive so the WebSocket stays open
+        # handle_ws_connection creates a background listener task
+        await asyncio.Future()
 
     async def process_request(connection, request) -> Any:
         path = request.path if hasattr(request, "path") else "/"
