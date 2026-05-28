@@ -48,20 +48,20 @@ cargo build --release
 
 ### 3. Generate Token & Get Your Command
 
-In any channel the bot can see, type `/agent register`:
+In any channel the bot can see, type `/agent register` and pick a mode:
 
 ```
-/agent register tunnel:True label:Kali-VM        # Cloudflare tunnel (requires outbound internet)
-/agent register reverse:True label:Kali-VM       # Reverse connection (agent → bot, recommended)
+/agent register mode:reverse label:Kali-VM      # Agent → Bot (recommended, no tunnel needed)
+/agent register mode:tunnel label:Kali-VM       # Cloudflare tunnel (requires outbound internet)
+/agent register mode:direct label:Kali-VM       # Raw WS (Kali needs public IP)
 ```
 
 | Field | What it does |
 |-------|-------------|
-| `tunnel` | `True` for Cloudflare auto-tunnel, `False` for direct connection |
-| `reverse` | `True` for reverse-connect mode (agent connects to bot, no tunnel needed) |
+| `mode` | `reverse` (agent connects to bot), `tunnel` (cloudflared), `direct` (raw WS) |
 | `label` | Friendly name for your VM (optional) |
 
-**Recommended: Reverse mode** — the agent connects **outbound** to the bot. No tunnel binary, no open ports, no DNS trickery. Works wherever Kali has HTTP/S outbound.
+**Recommended: Reverse mode** — the agent connects **outbound** to the bot via WSS (port 443). No tunnel binary, no open ports, no DNS trickery. Works wherever Kali has HTTP/S outbound.
 
 The bot replies with your token and the exact command to run:
 
@@ -72,7 +72,7 @@ No tunnel needed — agent connects outbound to the bot.
 
 Run on Kali:
 sudo ./sentinel-agent --token "f439a7b3..." \
-  --connect-to-bot "wss://app.koyeb.app:8002/agent-ws"
+  --connect-to-bot "wss://app.koyeb.app/agent-ws"
 
 Token: f439a7b3...
 Keep this secret!
@@ -83,10 +83,20 @@ Keep this secret!
 **Reverse mode (recommended):**
 ```bash
 sudo ./target/release/sentinel-agent --token "f439a7b3..." \
-  --connect-to-bot "wss://app.koyeb.app:8002/agent-ws"
+  --connect-to-bot "wss://app.koyeb.app/agent-ws"
 ```
 
-**Cloudflare tunnel mode (if Kali has full internet):**
+**Reverse with Cloudflare fallback (if reverse connect fails):**
+```bash
+sudo ./target/release/sentinel-agent --token "f439a7b3..." \
+  --connect-to-bot "wss://app.koyeb.app/agent-ws" \
+  --fallback-tunnel \
+  --bot-register-url "https://app.koyeb.app/register"
+```
+
+This tries reverse first; if the bot is unreachable, it falls back to cloudflared tunnel automatically.
+
+**Cloudflare tunnel mode only:**
 ```bash
 # Install cloudflared (one-time)
 sudo curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
@@ -98,7 +108,7 @@ sudo chmod +x /usr/local/bin/cloudflared
 
 The agent prints confirmation:
 ```
-🔗 Connecting to bot: wss://app.koyeb.app:8002/agent-ws
+🔗 Connecting to bot: wss://app.koyeb.app/agent-ws
 ```
 
 ### 5. Agent Auto-Connects
@@ -121,7 +131,7 @@ Everything runs on **your** VM. You're done.
 
 If Kali has a public IP:
 
-1. `/agent register tunnel:False label:Kali-VM`
+1. `/agent register mode:direct label:Kali-VM`
 2. On Kali: `./target/release/sentinel-agent --token "..." --bind 0.0.0.0:7331`
 3. `/agent connect ws_url:ws://YOUR_PUBLIC_IP:7331`
 
@@ -132,7 +142,7 @@ For air-gapped Kali that connects via WireGuard to a relay VPS:
 1. Set up WireGuard between Kali and a relay VPS
 2. On the relay VPS, forward port 7331 to Kali's WireGuard IP:  
    `iptables -t nat -A PREROUTING -p tcp --dport 7331 -j DNAT --to-destination 10.0.0.2:7331`
-3. `/agent register tunnel:False label:Kali-VM`
+3. `/agent register mode:direct label:Kali-VM`
 4. On Kali: `./target/release/sentinel-agent --token "..." --wireguard /etc/wireguard/ad_lab.conf`
 5. `/agent connect ws_url:ws://RELAY_VPS_IP:7331`
 
@@ -161,7 +171,7 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 
 | Category | Command | Description |
 |----------|---------|-------------|
-| **Agent** | `/agent register [tunnel/reverse]` | Generate token & get agent command |
+| **Agent** | `/agent register [mode]` | Generate token & get agent command (mode: reverse/tunnel/direct) |
 | | `/agent connect <ws_url>` | Connect your attack VM to the bot (tunnel/direct mode) |
 | | `/agent disconnect` | Remove your VM from the bot |
 | | `/agent status` | Check your agent connection status |
@@ -227,17 +237,14 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
                     │  │  - Tools (web, search, etc)    │   │
                     │  └──────────────┬────────────────┘   │
                     │                 │                     │
-                     │  ┌──────────────┬────────────────┐   │
-                     │  │  Healthcheck (port 8000)          │   │
-                     │  │  - POST /register (token auth)   │   │
-                     │  │  - GET / (keep-alive ping)       │   │
-                     │  ├──────────────────────────────────┤   │
-                     │  │  Agent WS Server (port 8002)      │   │
-                     │  │  - Accepts agent reverse connect  │   │
-                     │  │  - Token auth via database lookup │   │
-                     │  └──────────────────────────────────┘   │
-                     │                                      │
-                     │  Hosted on: Koyeb (free tier)        │
+                    │  ┌──────────────▼────────────────┐   │
+                    │  │  Combined Server (port 8000)    │   │
+                    │  │  - GET /, /health (healthcheck) │   │
+                    │  │  - GET /register (tunnel auth)  │   │
+                    │  │  - WS /agent-ws (agent connect) │   │
+                    │  └──────────────────────────────────┘   │
+                    │                                      │
+                    │  Hosted on: Koyeb (free tier)        │
                     │  Database: PostgreSQL (session/chat) │
                     └──────────┬──────────────────────────┘
                                │
@@ -262,9 +269,9 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
            │  │ --connect-to-  │  │ (port 7331, │ │
            │  │ bot (reverse)  │  │  tunnel)    │ │
            │  ├────────────────┤  ├─────────────┤ │
-           │  │ Tunnel (opt.)  │  │ Executor    │ │
-           │  │ cloudflared →  │  │ (OVT cmds)  │ │
-           │  │ trycloudflare  │  └─────────────┘ │
+           │  │ Fallback       │  │ Executor    │ │
+           │  │ --fallback-    │  │ (OVT cmds)  │ │
+           │  │ tunnel (opt.)  │  └─────────────┘ │
            │  ├────────────────┤  ┌─────────────┐ │
            │  │ Monitor        │  │ Loot        │ │
            │  │ (sysinfo)      │  │ Watcher     │ │
@@ -292,35 +299,39 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 | Mode | Flag | Service | Ports | Best for |
 |------|------|---------|-------|----------|
 | **Reverse Connect** ⭐ | `--connect-to-bot` | Agent → Bot WS | TCP 443 (WSS) outbound only | **Kali behind NAT/firewall**, no tunnel needed |
+| **Reverse + Fallback** | `--connect-to-bot --fallback-tunnel` | Reverse first, cloudflared if fails | TCP 443 outbound only | Unreliable internet, best of both |
 | **Cloudflare Tunnel** | `--tunnel` | `cloudflared` → `trycloudflare.com` | TCP 443 outbound only | Kali with full internet (no DNS blocks) |
 | **Direct** | None | Kali WS server | TCP 7331 (inbound) | Kali on same network as bot |
 | **WireGuard** | `--wireguard` | `wg-quick` | Configurable/VPN | Air-gapped labs with relay VPS |
 
-**Recommended: Reverse Connect** — the agent connects **outbound** to the bot's WebSocket server on port 8002 (WSS). No tunnel binary, no configuration, no open inbound ports. Works any time Kali can reach the bot's server via HTTPS (port 443). The bot authenticates the agent using the token generated by `/agent register`.
+**Recommended: Reverse Connect** — the agent connects **outbound** to the bot's WebSocket server at `wss://<app>.koyeb.app/agent-ws` (port 443). No tunnel binary, no configuration, no open inbound ports. Works any time Kali can reach the bot's server via HTTPS. The bot authenticates the agent using the token generated by `/agent register`. Optionally pair with `--fallback-tunnel` for automatic cloudflared fallback.
 
 ## LLM Providers (Free & Paid)
 
-| Provider | API Key Env Var | Default Model | Free Tier / Limits |
-|----------|----------------|---------------|-------------------|
-| **Cerebras** | `CEREBRAS_API_KEY` | `Qwen-3-235B-Instruct` | Free, rate-limited |
-| **Groq** | `GROQ_API_KEY` | `meta-llama/llama-4-scout-17b-16e-instruct` | 30 req/min (70B), **supports images** |
-| **Gemini** | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | `models/gemini-2.5-flash` | 60 req/min, 1500/day, **supports images** |
-| **NVIDIA NIM** | `NVIDIA_API_KEY` | `mistralai/mistral-large-3-675b-instruct-2512` | ~40 RPM (no token limit), free, no CC |
-| **MiniMax** (via NVIDIA) | `NVIDIA_API_KEY` | `minimaxai/minimax-m2.7` | Same, chained after NVIDIA |
-| **OpenAI** | `OPENAI_API_KEY` | `gpt-4o-mini` | Paid |
-| **SambaNova** | `SAMBANOVA_API_KEY` | `Meta-Llama-3.1-70B-Instruct` | Free, rate-limited |
-| **Ollama** (local) | — | `llama3.1:70b` | Free, local |
+| Provider | API Key Env Var | Default Model | Use For | Free Tier / Limits |
+|----------|----------------|---------------|---------|-------------------|
+| **NVIDIA NIM** ⭐ | `NVIDIA_API_KEY` | `mistralai/mistral-large-3-675b-instruct-2512` | Text generation (primary) | ~40 RPM, no token caps, free, no CC |
+| **Cerebras** | `CEREBRAS_API_KEY` | `Qwen-3-235B-Instruct` | Text fallback | Free, rate-limited |
+| **Groq** | `GROQ_API_KEY` | `llama-4-scout-17b-16e-instruct` | **Vision / Image analysis** | 30 req/min, supports images |
+| **Gemini** | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | `models/gemini-2.5-flash` | Vision fallback | 60 req/min, 1500/day, supports images |
+| **MiniMax** (via NVIDIA) | `NVIDIA_API_KEY` | `minimaxai/minimax-m2.7` | Text fallback | Same key as NVIDIA, auto-chained |
+| **OpenAI** | `OPENAI_API_KEY` | `gpt-4o-mini` | Text fallback | Paid |
+| **SambaNova** | `SAMBANOVA_API_KEY` | `Meta-Llama-3.1-70B-Instruct` | Text fallback | Free, rate-limited |
+| **Ollama** (local) | — | `llama3.1:70b` | Text fallback | Free, local |
 
-Multiple providers auto-chain as fallback in priority order. No need to set `LLM_PROVIDER` — just add API keys.
+**Priority chain for text:** NVIDIA → Cerebras → Groq → Gemini → MiniMax → OpenAI → SambaNova → Ollama
+**Priority chain for images:** Groq Llama 4 Scout → Gemini 2.5 Flash
 
-**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks two fallback providers: **NVIDIA** (Mistral Large 3 675B) and **MiniMax** (M2.7 230B) — both chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
+Multiple providers auto-chain as fallback. No need to set `LLM_PROVIDER` — just add API keys. NVIDIA handles text, Groq handles vision.
+
+**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks two providers: **NVIDIA** (Mistral Large 3 675B for text) and **MiniMax** (M2.7 230B) — both chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
 
 ### Quick Koyeb Env Example
 
 ```text
 DISCORD_TOKEN=...
 DATABASE_URL=...
-AGENT_WS_PORT=8002
+SERVER_PORT=8000
 BOT_PUBLIC_URL=https://your-app.koyeb.app
 SENTINEL_TOKEN=...
 GROQ_API_KEY=gsk_...
@@ -330,9 +341,10 @@ NVIDIA_API_KEY=nvapi-...
 
 No `LLM_PROVIDER` needed — fallback chain handles it.
 
-The bot exposes two ports:
-- **8000** — healthcheck HTTP server (Koyeb liveness checks, POST /register for tunnel mode)
-- **8002** — agent WebSocket server (`wss://your-app.koyeb.app:8002/agent-ws`)
+The bot exposes a single port:
+- **8000** — combined HTTP + WebSocket server (healthcheck GET /,/health, tunnel registration GET /register, agent WebSocket at /agent-ws)
+
+Agent connects to: `wss://your-app.koyeb.app/agent-ws` (no port, uses default 443)
 
 ## Security
 
@@ -343,8 +355,9 @@ The bot exposes two ports:
 - **Destructive confirmation** — destructive commands need a button click
 - **No shell injection** — process spawning uses argument arrays, not shell strings
 - **Rate limiter** — 10 req/sec per user default
-- **AI vision** — screenshot analysis via Gemini or Groq Llama 4
+- **AI vision** — screenshot analysis via Groq Llama 4 Scout or Gemini 2.5 Flash
 - **Auto-tunnel with `--tunnel`** — Cloudflare Quick Tunnel (no open inbound ports, outbound-only to Cloudflare on port 443)
+- **Auto-fallback** — `--fallback-tunnel` tries reverse connect first, falls back to cloudflared if unreachable
 
 ## Testing
 
