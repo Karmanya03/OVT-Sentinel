@@ -354,7 +354,7 @@ class LLMBrain:
 
         return "Mistral tool-calling did not converge after 8 turns."
 
-    async def _chat_langchain(self, llm, tools_bundle, session_id: str, user_id: str, message: str, *, use_tools: bool = True) -> str:
+    async def _chat_langchain(self, llm, tools_bundle, session_id: str, user_id: str, message: str, *, use_tools: bool = True, timeout: float = 60.0) -> str:
         session_ctx = {}
         chat_history = []
         if self.memory:
@@ -390,13 +390,13 @@ class LLMBrain:
                 agent, _ = self._build_langchain_agent(llm)
                 response = await self._call_with_retry(
                     lambda: agent.ainvoke({"messages": messages}),
-                    timeout=60.0,
+                    timeout=timeout,
                 )
                 response_messages = response.get("messages", []) if isinstance(response, dict) else []
                 reply_source = response_messages[-1].content if response_messages else response
                 reply = _message_content_to_text(reply_source)
         else:
-            result = await self._call_with_retry(lambda: llm.ainvoke(messages), timeout=60.0)
+            result = await self._call_with_retry(lambda: llm.ainvoke(messages), timeout=timeout)
             reply = _message_content_to_text(getattr(result, "content", result))
 
         if self.memory:
@@ -458,7 +458,7 @@ class LLMBrain:
             if not result:
                 raise RuntimeError("Uncensored provider not available. Set NVIDIA_API_KEY.")
             name, llm, tools = ("nvidia-uncensored", *result)
-            return await self._chat_langchain(llm, tools, session_id, user_id, message, use_tools=use_tools)
+            return await self._chat_langchain(llm, tools, session_id, user_id, message, use_tools=use_tools, timeout=120.0)
         except Exception as e:
             raise RuntimeError(f"Uncensored provider failed: {e}") from e
         finally:
