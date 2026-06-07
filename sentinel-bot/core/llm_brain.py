@@ -445,6 +445,16 @@ class LLMBrain:
 
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
+    async def chat_unsafe(self, session_id: str, user_id: str, message: str) -> str:
+        result = self._init_single("nvidia-uncensored")
+        if not result:
+            raise RuntimeError("Uncensored provider not available. Set NVIDIA_API_KEY.")
+        name, llm, tools = ("nvidia-uncensored", *result)
+        try:
+            return await self._chat_langchain(llm, tools, session_id, user_id, message, use_tools=False)
+        except Exception as e:
+            raise RuntimeError(f"Uncensored provider failed: {e}") from e
+
     async def _try_vision_model(self, model: str, prompt: str, encoded: str) -> Optional[str]:
         if not model or not self.config.nvidia_api_key:
             return None

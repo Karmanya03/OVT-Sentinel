@@ -57,7 +57,7 @@ class Settings:
     bot_public_url: str = ""
     agent_ws_port: int = 8002
 
-    PROVIDER_PRIORITY = ["nvidia", "nvidia-uncensored", "cerebras", "groq", "minimax", "openai", "mistral", "sambanova", "ollama"]
+    PROVIDER_PRIORITY = ["nvidia", "cerebras", "groq", "minimax", "openai", "mistral", "sambanova", "ollama"]
 
     def provider_candidates(self) -> list[str]:
         key_map = {
@@ -67,7 +67,6 @@ class Settings:
             "sambanova": self.sambanova_api_key,
             "cerebras": self.cerebras_api_key,
             "nvidia": self.nvidia_api_key,
-            "nvidia-uncensored": self.nvidia_api_key,
             "minimax": self.nvidia_api_key,
             "ollama": self.ollama_base_url if (self._ollama_enabled() or self.llm_provider.strip().lower() == "ollama") else None,
         }

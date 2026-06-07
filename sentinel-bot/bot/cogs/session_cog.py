@@ -202,6 +202,49 @@ class SessionCog(commands.Cog):
                 author_icon=interaction.user.display_avatar.url,
             )
 
+    @app_commands.command(name="exploit", description="Generate exploits/malware/offensive content (uncensored model)")
+    @app_commands.describe(prompt="Describe the exploit or offensive tool you need")
+    async def exploit(self, interaction: discord.Interaction, prompt: str) -> None:
+        await interaction.response.defer()
+        await self._rate_limit(interaction)
+        session_id = str(interaction.user.id)
+        await self.memory.get_or_create_session(session_id)
+
+        target = interaction.channel
+        thread_id = await self.memory.get_thread_by_session(session_id)
+        if thread_id:
+            thread = self.bot.get_channel(thread_id)
+            if thread and isinstance(thread, discord.Thread) and not thread.archived:
+                target = thread
+
+        await target.typing()
+        response = await safe_call(
+            interaction,
+            lambda: self.llm.chat_unsafe(session_id, str(interaction.user.id), prompt),
+            "exploit response",
+        )
+        if response is None:
+            return
+
+        is_thread = isinstance(target, discord.Thread) and target.id != interaction.channel_id
+        if is_thread:
+            await send_paginated(
+                target, "OVT-Sentinel Exploit", response, 0xe74c3b,
+                footer=interaction.user.display_name,
+                author_name=interaction.user.display_name,
+                author_icon=interaction.user.display_avatar.url,
+            )
+            await interaction.response.send_message(
+                f"Exploit posted in {target.mention} \u2192", ephemeral=True
+            )
+        else:
+            await send_paginated(
+                interaction, "OVT-Sentinel Exploit", response, 0xe74c3b,
+                footer=interaction.user.display_name,
+                author_name=interaction.user.display_name,
+                author_icon=interaction.user.display_avatar.url,
+            )
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot:

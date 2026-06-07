@@ -199,7 +199,9 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 | | `/readloot <path>` | Read a loot file |
 | | `/screenshot [analyze]` | Screenshot with optional AI vision |
 | | `/browse <url>` | Open URL in VM browser |
-| **AI** | `/ask <question>` | Ask the AI anything — it can run OVT + bash commands on your VM |
+| **AI** | `/chat <message>` | Chat with the AI (guardrailed model) |
+| | `/exploit <prompt>` | Generate exploits/malware/etc (uncensored model) |
+| | `/ask <question>` | Ask the AI anything — it can run OVT + bash commands on your VM |
 | | `/analyze <cmd> <output>` | Paste OVT output for AI review |
 | | `/suggest` | AI suggests the next best move |
 | | `/mistakes` | AI critiques your session |
@@ -320,12 +322,13 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 | **SambaNova** | `SAMBANOVA_API_KEY` | `Meta-Llama-3.1-70B-Instruct` | Text fallback | Free, rate-limited |
 | **Ollama** (local) | — | `llama3.1:70b` | Text fallback | Free, local |
 
-**Priority chain for text:** NVIDIA (nemotron-3-nano-omni) → NVIDIA Uncensored (deepseek-v4-flash) → Cerebras → Groq → MiniMax → OpenAI → SambaNova → Ollama
+**Priority chain for text:** NVIDIA (nemotron-3-nano-omni) → Cerebras → Groq → MiniMax → OpenAI → SambaNova → Ollama
+**Priority chain for uncensored:** `/exploit` command routes directly to deepseek-v4-flash (bypasses normal chain)
 **Priority chain for images:** NVIDIA (kimi-k2.6) → Groq → others
 
 Multiple providers auto-chain as fallback. No need to set `LLM_PROVIDER` — just add API keys. NVIDIA handles both text and vision.
 
-**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks multiple models: **Nemotron-3-Nano-Omni 30B** (fast text), **DeepSeek V4 Flash 284B** (uncensored fallback), **Kimi K2.6 1T** (vision), and **MiniMax M2.7** — all chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
+**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks multiple models: **Nemotron-3-Nano-Omni 30B** (fast text, `/chat`), **DeepSeek V4 Flash 284B** (uncensored, `/exploit`), **Kimi K2.6 1T** (vision), and **MiniMax M2.7** — all chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
 
 ### Quick Koyeb Env Example
 
