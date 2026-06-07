@@ -130,9 +130,7 @@ class LLMBrain:
         if provider == "mistral" and os.getenv("MISTRAL_API_KEY"):
             return self._init_mistral()
 
-        if provider == "gemini" and (self.config.gemini_api_key or self.config.google_api_key):
-            return self._init_gemini()
-        elif provider == "groq" and self.config.groq_api_key:
+        if provider == "groq" and self.config.groq_api_key:
             return self._init_groq()
         elif provider == "openai" and self.config.openai_api_key:
             return self._init_openai_compat(
@@ -200,46 +198,6 @@ class LLMBrain:
                 tool_defs.append({"type": "function", "function": {"name": t.name, "description": getattr(t, "description", ""), "parameters": params}})
             if tool_defs:
                 tools_bundle = tool_defs
-
-        return client, tools_bundle
-
-    def _init_gemini(self):
-        from google import genai
-        from google.genai import types
-
-        gemini_api_key = self.config.gemini_api_key or self.config.google_api_key
-        client = genai.Client(api_key=gemini_api_key)
-
-        tools_bundle = None
-        if self.config.use_agent_tools:
-            from core.tools import build_langchain_tools
-            langchain_tools = build_langchain_tools()
-            gemini_tool_defs = []
-            for lc_tool in langchain_tools:
-                try:
-                    schema = lc_tool.args_schema.schema() if hasattr(lc_tool, "args_schema") and lc_tool.args_schema else {}
-                except Exception:
-                    schema = {}
-                params = {"type": "object", "properties": {}, "required": []}
-                if "properties" in schema:
-                    for pname, pinfo in schema["properties"].items():
-                        ptype = pinfo.get("type", "string")
-                        if ptype == "integer": ptype = "integer"
-                        elif ptype == "number": ptype = "number"
-                        elif ptype == "boolean": ptype = "boolean"
-                        else: ptype = "string"
-                        params["properties"][pname] = {"type": ptype, "description": pinfo.get("description", "")}
-                        if pname in schema.get("required", []):
-                            params["required"].append(pname)
-                gemini_tool_defs.append(
-                    types.FunctionDeclaration(
-                        name=lc_tool.name,
-                        description=getattr(lc_tool, "description", "")[:500],
-                        parameters_json_schema=params,
-                    )
-                )
-            if gemini_tool_defs:
-                tools_bundle = [types.Tool(function_declarations=gemini_tool_defs)]
 
         return client, tools_bundle
 
@@ -313,105 +271,6 @@ class LLMBrain:
     def _is_transient(self, e: Exception) -> bool:
         err_str = str(e).lower()
         return any(k in err_str for k in ("rate", "429", "quota", "overloaded", "unavailable", "503", "500", "timeout", "retry", "limit", "exhausted"))
-
-    async def _chat_gemini(self, client, tools_bundle, session_id: str, user_id: str, message: str, *, use_tools: bool = True) -> str:
-        from google.genai import types
-
-        session_ctx = {}
-        contents = []
-        if self.memory:
-            session_ctx = await self.memory.get_session_context(session_id)
-            history = await self.memory.get_chat_history(session_id, limit=15)
-            for h in history:
-                role = "user" if h["role"] == "user" else "model"
-                contents.append(
-                    types.Content(
-                        role=role,
-                        parts=[types.Part.from_text(text=self._truncate_text(h["content"], 4000))],
-                    )
-                )
-
-        context_block = self._build_context_block(session_ctx)
-        context_block = self._truncate_text(context_block, 5000)
-        full_message = self._truncate_text(f"{context_block}\n\n{message}" if context_block else message, 6000)
-        contents.append(full_message)
-
-        max_turns = 8
-        final_response = None
-        tool_map = None
-        if use_tools and tools_bundle:
-            from core.tools import build_langchain_tools
-
-            tool_map = {tool.name: tool for tool in build_langchain_tools()}
-
-        for turn in range(max_turns):
-            try:
-                config_kwargs = {
-                    "system_instruction": self.system_prompt,
-                    "temperature": 0.2,
-                    "max_output_tokens": 8192,
-                }
-                if use_tools and tools_bundle:
-                    config_kwargs["tools"] = tools_bundle
-                    config_kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)
-
-                response = await self._call_with_retry(
-                    lambda: client.aio.models.generate_content(
-                        model=self.config.gemini_model,
-                        contents=contents,
-                        config=types.GenerateContentConfig(**config_kwargs),
-                    ),
-                    timeout=30.0,
-                )
-            except Exception:
-                if turn == 0:
-                    raise
-                break
-
-            final_response = response
-
-            function_calls = list(getattr(response, "function_calls", None) or [])
-            if not function_calls:
-                break
-
-            if not tools_bundle:
-                break
-
-            if hasattr(response, "candidates") and response.candidates:
-                contents.append(response.candidates[0].content)
-
-            for function_call in function_calls:
-                call = getattr(function_call, "function_call", function_call)
-                tool_name = getattr(call, "name", "")
-                tool_args = dict(getattr(call, "args", {}) or {})
-                log.info("Gemini function call: %s(%s)", tool_name, tool_args)
-
-                try:
-                    if tool_map and tool_name in tool_map:
-                        result = await tool_map[tool_name].ainvoke(tool_args)
-                    else:
-                        result = f"Unknown tool: {tool_name}"
-                except Exception as e:
-                    result = f"Tool error: {e}"
-
-                contents.append(
-                    types.Content(
-                        role="tool",
-                        parts=[
-                            types.Part.from_function_response(
-                                name=tool_name,
-                                response={"result": self._truncate_text(str(result), 3000)},
-                            )
-                        ],
-                    )
-                )
-            continue
-
-        reply = final_response.text if final_response and hasattr(final_response, "text") else str(final_response or "")
-        if self.memory:
-            await self.memory.add_chat_message(session_id, "user", message)
-            await self.memory.add_chat_message(session_id, "assistant", reply)
-        return reply
 
     async def _chat_mistral(self, client, tools_bundle, messages, *, use_tools: bool = True) -> str:
         from core.tools import build_langchain_tools
@@ -553,10 +412,7 @@ class LLMBrain:
         try:
             for i, (name, llm, tools) in enumerate(providers):
                 try:
-                    if name == "gemini":
-                        result = await self._chat_gemini(llm, tools, session_id, user_id, message, use_tools=use_tools)
-                    else:
-                        result = await self._chat_langchain(llm, tools, session_id, user_id, message, use_tools=use_tools)
+                    result = await self._chat_langchain(llm, tools, session_id, user_id, message, use_tools=use_tools)
 
                     if i > 0:
                         log.info("LLM fallback: switched from %s to %s", providers[i-1][0], name)
@@ -582,50 +438,59 @@ class LLMBrain:
 
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
+    async def _try_vision_model(self, model: str, prompt: str, encoded: str) -> Optional[str]:
+        if not model or not self.config.nvidia_api_key:
+            return None
+        try:
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import HumanMessage
+            llm = ChatOpenAI(
+                model=model,
+                temperature=0.2,
+                max_tokens=8192,
+                api_key=self.config.nvidia_api_key,
+                base_url=self.config.nvidia_base_url,
+            )
+            msg = HumanMessage(
+                content=[
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
+                ]
+            )
+            response = await self._call_with_retry(lambda: llm.ainvoke([msg]), timeout=30.0)
+            return _message_content_to_text(getattr(response, "content", response))
+        except Exception as e:
+            log.warning("Vision model %s failed: %s", model, e)
+            return None
+
     async def analyze_image(self, image_bytes: bytes, prompt: str = "Analyze this screenshot from a pentest VM. What do you see? Identify any tools, terminals, commands, or security-relevant information.") -> str:
         import base64
         encoded = base64.b64encode(image_bytes).decode("utf-8")
+
+        # NVIDIA vision chain: primary -> fallback
+        if self.config.nvidia_api_key:
+            for model in [self.config.nvidia_vision_model, self.config.nvidia_vision_model_fallback]:
+                result = await self._try_vision_model(model, prompt, encoded)
+                if result:
+                    return result
+
+        # Fall back to other providers
         providers = self._init_all_providers()
         for name, llm, tools in providers:
             try:
-                if name == "gemini":
-                    from google.genai import types
-                    response = await self._call_with_retry(
-                        lambda: llm.aio.models.generate_content(
-                            model=self.config.gemini_model,
-                            contents=[
-                                prompt,
-                                types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-                            ],
-                            config=types.GenerateContentConfig(
-                                temperature=0.2,
-                                max_output_tokens=8192,
-                                system_instruction=self.system_prompt,
-                            ),
-                        ),
-                        timeout=30.0,
-                    )
-                    return response.text
-                else:
-                    from langchain_core.messages import HumanMessage
-                    msg = HumanMessage(
-                        content=[
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{encoded}"},
-                            },
-                        ]
-                    )
-                    response = await self._call_with_retry(
-                        lambda: llm.ainvoke([msg]),
-                        timeout=30.0,
-                    )
-                    return _message_content_to_text(getattr(response, "content", response))
+                from langchain_core.messages import HumanMessage
+                msg = HumanMessage(
+                    content=[
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
+                    ]
+                )
+                response = await self._call_with_retry(lambda: llm.ainvoke([msg]), timeout=30.0)
+                return _message_content_to_text(getattr(response, "content", response))
             except Exception as e:
                 log.warning("%s image analysis failed (%s), trying next provider", name, e)
                 continue
-        return "Image analysis requires a vision-capable provider. Configure NVIDIA_API_KEY, GROQ_API_KEY, or Gemini (GEMINI_API_KEY)."
+        return "Image analysis requires a vision-capable provider. Configure NVIDIA_API_KEY (with vision model) or GROQ_API_KEY."
 
     @cached(ttl_secs=300)
     async def analyze_output(self, session_id: str, command: str, output: str) -> str:

@@ -1,5 +1,4 @@
 discord.py>=2.3.2
-google-genai==2.6.0
 # LangChain with tool-calling support (pinned for compatibility)
 langchain==1.3.2
 ## Remove explicit langchain-core and langchain-community pins to avoid

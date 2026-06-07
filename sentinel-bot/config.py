@@ -18,11 +18,8 @@ class Settings:
     allowed_user_ids: list[int] = field(default_factory=list)
     allowed_channel_ids: list[int] = field(default_factory=list)
 
-    llm_provider: str = "gemini"
+    llm_provider: str = "nvidia"
     llm_provider_explicit: bool = False
-    gemini_api_key: Optional[str] = None
-    google_api_key: Optional[str] = None
-    gemini_model: str = "models/gemini-2.5-flash"
 
     groq_api_key: Optional[str] = None
     groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
@@ -31,14 +28,15 @@ class Settings:
     sambanova_model: str = "Meta-Llama-3.1-70B-Instruct"
 
     cerebras_api_key: Optional[str] = None
-    # Default Cerebras model (set via CEREBRAS_MODEL env var if you want to override)
-    cerebras_model: str = "Qwen-3-235B-Instruct"
+    cerebras_model: str = "gpt-oss-120b"
 
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o-mini"
 
     nvidia_api_key: Optional[str] = None
-    nvidia_model: str = "mistralai/mistral-large-3-675b-instruct-2512"
+    nvidia_model: str = "nvidia/nemotron-3-ultra-550b-a55b"
+    nvidia_vision_model: str = "moonshotai/kimi-k2.6"
+    nvidia_vision_model_fallback: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     minimax_model: str = "minimaxai/minimax-m2.7"
 
@@ -58,12 +56,10 @@ class Settings:
     bot_public_url: str = ""
     agent_ws_port: int = 8002
 
-    # Preferred provider fallback order: try Cerebras first, then Groq, then Gemini, then others
-    PROVIDER_PRIORITY = ["nvidia", "mistral", "cerebras", "groq", "gemini", "minimax", "openai", "sambanova", "ollama"]
+    PROVIDER_PRIORITY = ["nvidia", "cerebras", "groq", "minimax", "openai", "mistral", "sambanova", "ollama"]
 
     def provider_candidates(self) -> list[str]:
         key_map = {
-            "gemini": self.gemini_api_key or self.google_api_key,
             "groq": self.groq_api_key,
             "mistral": os.getenv("MISTRAL_API_KEY"),
             "openai": self.openai_api_key,
@@ -115,7 +111,7 @@ def validate_config(s: Settings) -> None:
     if not configured:
         errors.append(
             "No LLM provider configured. Set at least one of: "
-                "GEMINI_API_KEY or GOOGLE_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, "
+            "GROQ_API_KEY, OPENAI_API_KEY, "
             "SAMBANOVA_API_KEY, CEREBRAS_API_KEY, NVIDIA_API_KEY, MISTRAL_API_KEY"
         )
     elif s.llm_provider_explicit and s.llm_provider.strip().lower() not in configured:
@@ -141,21 +137,17 @@ def load_settings() -> Settings:
 
     llm_provider_env = os.getenv("LLM_PROVIDER")
     llm_provider_explicit = bool(llm_provider_env and llm_provider_env.strip())
-    default_llm_provider = "gemini"
-    if os.getenv("NVIDIA_API_KEY"):
-        default_llm_provider = "nvidia"
-    elif os.getenv("MISTRAL_API_KEY"):
-        default_llm_provider = "mistral"
+    default_llm_provider = "nvidia"
+    if os.getenv("CEREBRAS_API_KEY"):
+        default_llm_provider = "cerebras"
     elif os.getenv("GROQ_API_KEY"):
         default_llm_provider = "groq"
     elif os.getenv("OPENAI_API_KEY"):
         default_llm_provider = "openai"
-    elif os.getenv("CEREBRAS_API_KEY"):
-        default_llm_provider = "cerebras"
+    elif os.getenv("MISTRAL_API_KEY"):
+        default_llm_provider = "mistral"
     elif os.getenv("SAMBANOVA_API_KEY"):
         default_llm_provider = "sambanova"
-    elif os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
-        default_llm_provider = "gemini"
 
     raw_guilds = os.getenv("ALLOWED_GUILD_IDS", "")
     raw_users = os.getenv("ALLOWED_USER_IDS", "")
@@ -172,19 +164,18 @@ def load_settings() -> Settings:
         allowed_channel_ids=_parse_int_list(raw_channels) if raw_channels else [],
         llm_provider=llm_provider_env or default_llm_provider,
         llm_provider_explicit=llm_provider_explicit,
-        gemini_api_key=os.getenv("GEMINI_API_KEY"),
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
-        gemini_model=os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash"),
         groq_api_key=os.getenv("GROQ_API_KEY"),
         groq_model=os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"),
         sambanova_api_key=os.getenv("SAMBANOVA_API_KEY"),
         sambanova_model=os.getenv("SAMBANOVA_MODEL", "Meta-Llama-3.1-70B-Instruct"),
         cerebras_api_key=os.getenv("CEREBRAS_API_KEY"),
-        cerebras_model=os.getenv("CEREBRAS_MODEL", "llama3.1-70b"),
+        cerebras_model=os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         nvidia_api_key=os.getenv("NVIDIA_API_KEY"),
-        nvidia_model=os.getenv("NVIDIA_MODEL", "mistralai/mistral-large-3-675b-instruct-2512"),
+        nvidia_model=os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b"),
+        nvidia_vision_model=os.getenv("NVIDIA_VISION_MODEL", "moonshotai/kimi-k2.6"),
+        nvidia_vision_model_fallback=os.getenv("NVIDIA_VISION_MODEL_FALLBACK", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
         nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
         minimax_model=os.getenv("NVIDIA_MINIMAX_MODEL", "minimaxai/minimax-m2.7"),
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),

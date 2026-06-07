@@ -310,21 +310,21 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 
 | Provider | API Key Env Var | Default Model | Use For | Free Tier / Limits |
 |----------|----------------|---------------|---------|-------------------|
-| **NVIDIA NIM** ⭐ | `NVIDIA_API_KEY` | `mistralai/mistral-large-3-675b-instruct-2512` | Text generation (primary) | ~40 RPM, no token caps, free, no CC |
-| **Cerebras** | `CEREBRAS_API_KEY` | `Qwen-3-235B-Instruct` | Text fallback | Free, rate-limited |
-| **Groq** | `GROQ_API_KEY` | `meta-llama/llama-4-scout-17b-16e-instruct` | **Vision / Image analysis** | 30 req/min, supports images |
-| **Gemini** | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | `models/gemini-2.5-flash` | Vision fallback | 60 req/min, 1500/day, supports images |
+| **NVIDIA NIM (Text)** ⭐ | `NVIDIA_API_KEY` | `nvidia/nemotron-3-ultra-550b-a55b` | Text generation (primary) | 550B MoE (55B active), 1M context, free trial |
+| **NVIDIA NIM (Vision)** ⭐ | `NVIDIA_API_KEY` | `moonshotai/kimi-k2.6` | Vision / Image analysis | 1T MoE (32B active), multimodal (text+images+video) |
+| **Cerebras** | `CEREBRAS_API_KEY` | `gpt-oss-120b` | Text fallback | Free, rate-limited |
+| **Groq** | `GROQ_API_KEY` | `meta-llama/llama-4-scout-17b-16e-instruct` | Text + Vision fallback | 30 req/min, supports images |
 | **MiniMax** (via NVIDIA) | `NVIDIA_API_KEY` | `minimaxai/minimax-m2.7` | Text fallback | Same key as NVIDIA, auto-chained |
 | **OpenAI** | `OPENAI_API_KEY` | `gpt-4o-mini` | Text fallback | Paid |
 | **SambaNova** | `SAMBANOVA_API_KEY` | `Meta-Llama-3.1-70B-Instruct` | Text fallback | Free, rate-limited |
 | **Ollama** (local) | — | `llama3.1:70b` | Text fallback | Free, local |
 
-**Priority chain for text:** NVIDIA → Cerebras → Groq → Gemini → MiniMax → OpenAI → SambaNova → Ollama
-**Priority chain for images:** Groq Llama 4 Scout → Gemini 2.5 Flash
+**Priority chain for text:** NVIDIA (nemotron-3-ultra) → Cerebras → Groq → MiniMax → OpenAI → SambaNova → Ollama
+**Priority chain for images:** NVIDIA (kimi-k2.6) → Groq → others
 
-Multiple providers auto-chain as fallback. No need to set `LLM_PROVIDER` — just add API keys. NVIDIA handles text, Groq handles vision.
+Multiple providers auto-chain as fallback. No need to set `LLM_PROVIDER` — just add API keys. NVIDIA handles both text and vision.
 
-**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks two providers: **NVIDIA** (Mistral Large 3 675B for text) and **MiniMax** (M2.7 230B) — both chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
+**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks multiple models: **Nemotron-3-Ultra 550B** (text), **Kimi K2.6 1T** (vision), and **MiniMax M2.7** — all chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
 
 ### Quick Koyeb Env Example
 
@@ -334,9 +334,10 @@ DATABASE_URL=...
 SERVER_PORT=8000
 BOT_PUBLIC_URL=https://your-app.koyeb.app
 SENTINEL_TOKEN=...
-GROQ_API_KEY=gsk_...
-CEREBRAS_API_KEY=csk_...
 NVIDIA_API_KEY=nvapi-...
+NVIDIA_MODEL=nvidia/nemotron-3-ultra-550b-a55b
+NVIDIA_VISION_MODEL=moonshotai/kimi-k2.6
+CEREBRAS_API_KEY=csk_...
 ```
 
 No `LLM_PROVIDER` needed — fallback chain handles it.
