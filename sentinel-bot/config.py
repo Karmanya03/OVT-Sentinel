@@ -41,6 +41,9 @@ class Settings:
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     minimax_model: str = "minimaxai/minimax-m2.7"
 
+    openrouter_api_key: Optional[str] = None
+    openrouter_uncensored_model: str = "cognitivecomputations/dolphin3.0-mistral-24b:free"
+
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:70b"
 
@@ -180,6 +183,8 @@ def load_settings() -> Settings:
         nvidia_vision_model_fallback=os.getenv("NVIDIA_VISION_MODEL_FALLBACK", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
         nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
         minimax_model=os.getenv("NVIDIA_MINIMAX_MODEL", "minimaxai/minimax-m2.7"),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
+        openrouter_uncensored_model=os.getenv("OPENROUTER_UNCENSORED_MODEL", "cognitivecomputations/dolphin3.0-mistral-24b:free"),
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1:70b"),
         use_agent_tools=os.getenv("USE_AGENT_TOOLS", "true").lower() == "true",

@@ -176,6 +176,13 @@ class LLMBrain:
             )
         elif provider == "ollama":
             return self._init_ollama()
+        elif provider == "openrouter-uncensored" and self.config.openrouter_api_key:
+            return self._init_openai_compat(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=self.config.openrouter_api_key,
+                model=self.config.openrouter_uncensored_model,
+                label="OpenRouter Uncensored",
+            )
         return None
 
     def _init_mistral(self):
@@ -454,11 +461,17 @@ class LLMBrain:
             except Exception:
                 pass
         try:
-            result = self._init_single("nvidia-uncensored")
-            if not result:
-                raise RuntimeError("Uncensored provider not available. Set NVIDIA_API_KEY.")
-            name, llm, tools = ("nvidia-uncensored", *result)
-            return await self._chat_langchain(llm, tools, session_id, user_id, message, use_tools=use_tools, timeout=120.0)
+            for provider_name in ["openrouter-uncensored", "nvidia-uncensored"]:
+                result = self._init_single(provider_name)
+                if not result:
+                    continue
+                llm, tools = result
+                try:
+                    return await self._chat_langchain(llm, tools, session_id, user_id, message, use_tools=use_tools, timeout=120.0)
+                except Exception as e:
+                    log.warning("Uncensored provider %s failed: %s", provider_name, e)
+                    continue
+            raise RuntimeError("No uncensored provider available. Set OPENROUTER_API_KEY or NVIDIA_API_KEY.")
         except Exception as e:
             raise RuntimeError(f"Uncensored provider failed: {e}") from e
         finally:
