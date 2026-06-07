@@ -291,7 +291,7 @@ class LLMBrain:
                 return llm, None
         return llm, None
 
-    async def _call_with_retry(self, coro_factory, max_retries: int = 3, timeout: float = 120.0):
+    async def _call_with_retry(self, coro_factory, max_retries: int = 2, timeout: float = 30.0):
         last_err = None
         for attempt in range(max_retries):
             try:
@@ -361,7 +361,7 @@ class LLMBrain:
                         contents=contents,
                         config=types.GenerateContentConfig(**config_kwargs),
                     ),
-                    timeout=120.0,
+                    timeout=30.0,
                 )
             except Exception:
                 if turn == 0:
@@ -433,7 +433,7 @@ class LLMBrain:
                     messages=sdk_msgs,
                     tools=tools_bundle if use_tools else None,
                 ),
-                timeout=180.0,
+                timeout=30.0,
             )
 
             choice = response.choices[0]
@@ -524,13 +524,13 @@ class LLMBrain:
                 agent, _ = self._build_langchain_agent(llm)
                 response = await self._call_with_retry(
                     lambda: agent.ainvoke({"messages": messages}),
-                    timeout=180.0,
+                    timeout=30.0,
                 )
                 response_messages = response.get("messages", []) if isinstance(response, dict) else []
                 reply_source = response_messages[-1].content if response_messages else response
                 reply = _message_content_to_text(reply_source)
         else:
-            result = await self._call_with_retry(lambda: llm.ainvoke(messages), timeout=120.0)
+            result = await self._call_with_retry(lambda: llm.ainvoke(messages), timeout=30.0)
             reply = _message_content_to_text(getattr(result, "content", result))
 
         if self.memory:
@@ -603,7 +603,7 @@ class LLMBrain:
                                 system_instruction=self.system_prompt,
                             ),
                         ),
-                        timeout=60.0,
+                        timeout=30.0,
                     )
                     return response.text
                 else:
@@ -619,7 +619,7 @@ class LLMBrain:
                     )
                     response = await self._call_with_retry(
                         lambda: llm.ainvoke([msg]),
-                        timeout=60.0,
+                        timeout=30.0,
                     )
                     return _message_content_to_text(getattr(response, "content", response))
             except Exception as e:
