@@ -313,7 +313,7 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 | Provider | API Key Env Var | Default Model | Use For | Free Tier / Limits |
 |----------|----------------|---------------|---------|-------------------|
 | **NVIDIA NIM (Text)** ⭐ | `NVIDIA_API_KEY` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Text generation (primary) | 30B MoE (3B active), omni-modal (text+images+video+speech), fast & free |
-| **NVIDIA NIM (Uncensored)** 🔞 | `NVIDIA_API_KEY` | `minimaxai/minimax-m2.7` | Fallback for unfiltered content | 230B total, Chinese alignment (permissive on technical/hacking content), fast |
+| **NVIDIA NIM (Uncensored)** 🔞 | `NVIDIA_API_KEY` | `qwen/qwen3-5-122b-a10b` | Fallback for unfiltered content | 122B total (10B active), Alibaba/Chinese, permissive on technical/hacking content, fast |
 | **NVIDIA NIM (Vision)** ⭐ | `NVIDIA_API_KEY` | `moonshotai/kimi-k2.6` | Vision / Image analysis | 1T MoE (32B active), multimodal (text+images+video) |
 | **Cerebras** | `CEREBRAS_API_KEY` | `gpt-oss-120b` | Text fallback | Free, rate-limited |
 | **Groq** | `GROQ_API_KEY` | `meta-llama/llama-4-scout-17b-16e-instruct` | Text + Vision fallback | 30 req/min, supports images |
@@ -328,7 +328,7 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 
 Multiple providers auto-chain as fallback. No need to set `LLM_PROVIDER` — just add API keys. NVIDIA handles both text and vision.
 
-**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks multiple models: **Nemotron-3-Nano-Omni 30B** (fast text, `/chat`), **DeepSeek V4 Flash 284B** (uncensored, `/exploit`), **Kimi K2.6 1T** (vision), and **MiniMax M2.7** — all chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
+**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks multiple models: **Nemotron-3-Nano-Omni 30B** (fast text, `/chat`), **Qwen3.5-122B-A10B** (uncensored, `/exploit`), **Kimi K2.6 1T** (vision), and **MiniMax M2.7** — all chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
 
 ### Quick Koyeb Env Example
 
@@ -340,7 +340,7 @@ BOT_PUBLIC_URL=https://your-app.koyeb.app
 SENTINEL_TOKEN=...
 NVIDIA_API_KEY=nvapi-...
 NVIDIA_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-NVIDIA_UNCENSORED_MODEL=deepseek-ai/deepseek-v4-flash
+NVIDIA_UNCENSORED_MODEL=qwen/qwen3-5-122b-a10b
 NVIDIA_VISION_MODEL=moonshotai/kimi-k2.6
 CEREBRAS_API_KEY=csk_...
 ```
