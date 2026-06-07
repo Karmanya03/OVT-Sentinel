@@ -20,7 +20,7 @@ services:
       - key: NVIDIA_MODEL
         value: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
       - key: NVIDIA_UNCENSORED_MODEL
-        value: qwen/qwen3-5-122b-a10b
+        value: nvidia/nvidia-nemotron-nano-9b-v2
       - key: NVIDIA_VISION_MODEL
         value: moonshotai/kimi-k2.6
       - key: USE_AGENT_TOOLS
