@@ -9,6 +9,11 @@ pub enum BotMessage {
         command: String,
         timeout_secs: Option<u64>,
     },
+    RunShellCommand {
+        request_id: String,
+        command: String,
+        timeout_secs: Option<u64>,
+    },
     KillCommand {
         request_id: String,
     },

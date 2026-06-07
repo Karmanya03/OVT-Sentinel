@@ -310,7 +310,7 @@ class LLMBrain:
         err_str = str(e).lower()
         return any(k in err_str for k in ("rate", "429", "quota", "overloaded", "unavailable", "503", "500", "timeout", "retry", "limit", "exhausted"))
 
-    async def _chat_gemini(self, client, tools_bundle, session_id: str, user_id: str, message: str) -> str:
+    async def _chat_gemini(self, client, tools_bundle, session_id: str, user_id: str, message: str, *, use_tools: bool = True) -> str:
         from google.genai import types
 
         session_ctx = {}
@@ -335,7 +335,7 @@ class LLMBrain:
         max_turns = 8
         final_response = None
         tool_map = None
-        if tools_bundle:
+        if use_tools and tools_bundle:
             from core.tools import build_langchain_tools
 
             tool_map = {tool.name: tool for tool in build_langchain_tools()}
@@ -347,7 +347,7 @@ class LLMBrain:
                     "temperature": 0.2,
                     "max_output_tokens": 8192,
                 }
-                if tools_bundle:
+                if use_tools and tools_bundle:
                     config_kwargs["tools"] = tools_bundle
                     config_kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)
 
@@ -409,7 +409,7 @@ class LLMBrain:
             await self.memory.add_chat_message(session_id, "assistant", reply)
         return reply
 
-    async def _chat_mistral(self, client, tools_bundle, messages) -> str:
+    async def _chat_mistral(self, client, tools_bundle, messages, *, use_tools: bool = True) -> str:
         from core.tools import build_langchain_tools
 
         model = os.getenv("MISTRAL_MODEL", "mistral-large-latest")
@@ -419,7 +419,7 @@ class LLMBrain:
             content = _message_content_to_text(getattr(m, "content", None))
             sdk_msgs.append({"role": role, "content": content})
 
-        tool_map = {t.name: t for t in build_langchain_tools()} if tools_bundle else {}
+        tool_map = {t.name: t for t in build_langchain_tools()} if (use_tools and tools_bundle) else {}
 
         for _ in range(8):
             response = await self._call_with_retry(
@@ -427,7 +427,7 @@ class LLMBrain:
                     client.chat.complete,
                     model=model,
                     messages=sdk_msgs,
-                    tools=tools_bundle,
+                    tools=tools_bundle if use_tools else None,
                 ),
                 timeout=180.0,
             )
@@ -484,7 +484,7 @@ class LLMBrain:
 
         return "Mistral tool-calling did not converge after 8 turns."
 
-    async def _chat_langchain(self, llm, tools_bundle, session_id: str, user_id: str, message: str) -> str:
+    async def _chat_langchain(self, llm, tools_bundle, session_id: str, user_id: str, message: str, *, use_tools: bool = True) -> str:
         session_ctx = {}
         chat_history = []
         if self.memory:
@@ -508,14 +508,14 @@ class LLMBrain:
             messages.append(SystemMessage(content=context_block))
         messages.append(HumanMessage(content=message))
 
-        if self.config.use_agent_tools:
+        if use_tools and self.config.use_agent_tools:
             try:
                 from mistralai.client import Mistral as _MistralClass
             except Exception:
                 _MistralClass = None
 
             if _MistralClass and isinstance(llm, _MistralClass):
-                reply = await self._chat_mistral(llm, tools_bundle, messages)
+                reply = await self._chat_mistral(llm, tools_bundle, messages, use_tools=True)
             else:
                 agent, _ = self._build_langchain_agent(llm)
                 response = await self._call_with_retry(
@@ -534,8 +534,9 @@ class LLMBrain:
             await self.memory.add_chat_message(session_id, "assistant", reply)
         return reply
 
-    async def chat(self, session_id: str, user_id: str, message: str, context_override: dict = None) -> str:
-        if self.config.use_agent_tools:
+    async def chat(self, session_id: str, user_id: str, message: str, context_override: dict = None, enable_tools: Optional[bool] = None) -> str:
+        use_tools = enable_tools if enable_tools is not None else self.config.use_agent_tools
+        if use_tools:
             try:
                 from core.tools import set_tool_user_context
                 set_tool_user_context(user_id)
@@ -549,9 +550,9 @@ class LLMBrain:
             for i, (name, llm, tools) in enumerate(providers):
                 try:
                     if name == "gemini":
-                        result = await self._chat_gemini(llm, tools, session_id, user_id, message)
+                        result = await self._chat_gemini(llm, tools, session_id, user_id, message, use_tools=use_tools)
                     else:
-                        result = await self._chat_langchain(llm, tools, session_id, user_id, message)
+                        result = await self._chat_langchain(llm, tools, session_id, user_id, message, use_tools=use_tools)
 
                     if i > 0:
                         log.info("LLM fallback: switched from %s to %s", providers[i-1][0], name)

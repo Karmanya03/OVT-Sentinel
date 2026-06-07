@@ -22,6 +22,58 @@ impl CommandExecutor {
         }
     }
 
+    fn parse_command_args(command: &str) -> Result<Vec<String>> {
+        let mut args = Vec::new();
+        let mut current = String::new();
+        let mut chars = command.trim().chars().peekable();
+        let mut in_single = false;
+        let mut in_double = false;
+        let mut escaped = false;
+
+        while let Some(ch) = chars.next() {
+            if escaped {
+                current.push(ch);
+                escaped = false;
+                continue;
+            }
+
+            match ch {
+                '\\' if !in_single => {
+                    escaped = true;
+                }
+                '\'' if !in_double => {
+                    in_single = !in_single;
+                }
+                '"' if !in_single => {
+                    in_double = !in_double;
+                }
+                c if c.is_whitespace() && !in_single && !in_double => {
+                    if !current.is_empty() {
+                        args.push(std::mem::take(&mut current));
+                    }
+                    while matches!(chars.peek(), Some(next) if next.is_whitespace()) {
+                        chars.next();
+                    }
+                }
+                other => current.push(other),
+            }
+        }
+
+        if escaped {
+            current.push('\\');
+        }
+
+        if in_single || in_double {
+            return Err(anyhow::anyhow!("unterminated quoted string in command"));
+        }
+
+        if !current.is_empty() {
+            args.push(current);
+        }
+
+        Ok(args)
+    }
+
     pub async fn spawn_command(
         &self,
         request_id: String,
@@ -31,21 +83,140 @@ impl CommandExecutor {
         let (tx, rx) = mpsc::unbounded_channel();
         let start = Instant::now();
 
-        let args_str = command
-            .trim_start_matches("overthrone ")
-            .trim_start_matches("ovt ")
-            .to_string();
+        let raw = command.trim();
+        let args_source = raw
+            .strip_prefix("overthrone ")
+            .or_else(|| raw.strip_prefix("ovt "))
+            .unwrap_or(raw);
+        let args = Self::parse_command_args(args_source)?;
 
-        let mut cmd = if cfg!(windows) {
-            let mut c = Command::new("cmd");
-            c.arg("/C").arg(&command);
-            c
-        } else {
-            let mut c = Command::new("sh");
-            c.arg("-c").arg(&args_str);
-            c
-        };
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut cmd = Command::new(&self.ovt_path);
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+
+        let child = cmd.spawn()?;
+        let child_arc = Arc::new(Mutex::new(child));
+
+        self.processes
+            .lock()
+            .await
+            .insert(request_id.clone(), child_arc.clone());
+
+        let timeout_duration = timeout_secs.map(std::time::Duration::from_secs);
+
+        // stdout reader
+        let tx_out = tx.clone();
+        let rid = request_id.clone();
+        let out_clone = child_arc.clone();
+        tokio::spawn(async move {
+            let mut seq: u64 = 0;
+            let mut guard = out_clone.lock().await;
+            if let Some(stdout) = guard.stdout.take() {
+                let mut reader = BufReader::new(stdout).lines();
+                drop(guard);
+                while let Ok(Some(line)) = reader.next_line().await {
+                    seq = seq.wrapping_add(1);
+                    let msg = AgentMessage::CommandOutput {
+                        request_id: rid.clone(),
+                        stream: OutputStream::Stdout,
+                        data: line,
+                        sequence: seq,
+                    };
+                    let _ = tx_out.send(msg);
+                }
+            }
+        });
+
+        // stderr reader
+        let tx_err = tx.clone();
+        let rid2 = request_id.clone();
+        let err_clone = child_arc.clone();
+        tokio::spawn(async move {
+            let mut seq: u64 = 0;
+            let mut guard = err_clone.lock().await;
+            if let Some(stderr) = guard.stderr.take() {
+                let mut reader = BufReader::new(stderr).lines();
+                drop(guard);
+                while let Ok(Some(line)) = reader.next_line().await {
+                    seq = seq.wrapping_add(1);
+                    let msg = AgentMessage::CommandOutput {
+                        request_id: rid2.clone(),
+                        stream: OutputStream::Stderr,
+                        data: line,
+                        sequence: seq,
+                    };
+                    let _ = tx_err.send(msg);
+                }
+            }
+        });
+
+        // Waiter with optional timeout
+        let processes_map = self.processes.clone();
+        let tx_done = tx.clone();
+        let rid3 = request_id.clone();
+        tokio::spawn(async move {
+            let status_result = if let Some(dur) = timeout_duration {
+                tokio::select! {
+                    status = async {
+                        let mut guard = child_arc.lock().await;
+                        guard.wait().await
+                    } => status,
+                    _ = tokio::time::sleep(dur) => {
+                        let mut guard = child_arc.lock().await;
+                        let _ = guard.kill().await;
+                        let _ = guard.wait().await;
+                        let msg = AgentMessage::CommandKilled { request_id: rid3.clone() };
+                        let _ = tx_done.send(msg);
+                        let mut map = processes_map.lock().await;
+                        map.remove(&rid3);
+                        return;
+                    }
+                }
+            } else {
+                let mut guard = child_arc.lock().await;
+                guard.wait().await
+            };
+
+            let duration_ms = start.elapsed().as_millis() as u64;
+
+            match status_result {
+                Ok(status) => {
+                    let code = status.code().unwrap_or(-1);
+                    let complete = AgentMessage::CommandComplete {
+                        request_id: rid3.clone(),
+                        exit_code: code as i32,
+                        duration_ms,
+                    };
+                    let _ = tx_done.send(complete);
+                }
+                Err(e) => {
+                    let err = AgentMessage::Error {
+                        message: format!("wait error: {}", e),
+                        request_id: Some(rid3.clone()),
+                    };
+                    let _ = tx_done.send(err);
+                }
+            }
+
+            let mut map = processes_map.lock().await;
+            map.remove(&rid3);
+        });
+
+        Ok(rx)
+    }
+
+    pub async fn spawn_shell_command(
+        &self,
+        request_id: String,
+        command: String,
+        timeout_secs: Option<u64>,
+    ) -> Result<mpsc::UnboundedReceiver<AgentMessage>> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let start = Instant::now();
+
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", &command])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         let child = cmd.spawn()?;
         let child_arc = Arc::new(Mutex::new(child));
@@ -242,5 +413,27 @@ mod tests {
             }
         }
         assert!(killed, "expected command to be killed by timeout");
+    }
+
+    #[test]
+    fn test_parse_command_args_handles_quotes() {
+        let args = CommandExecutor::parse_command_args(
+            "adcs enum -H 10.0.0.1 -d 'example.local' --note \"hello world\"",
+        )
+        .unwrap();
+
+        assert_eq!(
+            args,
+            vec![
+                "adcs".to_string(),
+                "enum".to_string(),
+                "-H".to_string(),
+                "10.0.0.1".to_string(),
+                "-d".to_string(),
+                "example.local".to_string(),
+                "--note".to_string(),
+                "hello world".to_string(),
+            ]
+        );
     }
 }

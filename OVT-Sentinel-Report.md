@@ -1,6 +1,6 @@
 # OVT-Sentinel
 
-OVT-Sentinel is an AI-powered Discord bot built for Overthrone (OVT) Active Directory penetration testing. Instead of having to SSH into your Kali VM every time you want to run a command, you just invite the bot to your server, register your VM with a single command, and control everything from Discord. The AI mentor sitting behind the bot knows AD attacks, web pentesting, bug bounty hunting, cloud security, mobile testing, and CTFs inside out — it will suggest the next move, analyze your output, catch your mistakes, and even look at your VM screen.
+OVT-Sentinel is an AI-powered Discord bot built for Overthrone (OVT) Active Directory penetration testing. Instead of having to SSH into your Kali VM every time you want to run a command, you just invite the bot to your server, register your VM with a single command, and control everything from Discord. The AI mentor sitting behind the bot knows AD attacks, web pentesting, bug bounty hunting, cloud security, mobile testing, and CTFs inside out - it will suggest the next move, analyze your output, catch your mistakes, and even look at your VM screen.
 
 The whole setup is designed so you never have to mess with IP addresses, open inbound ports, or configure tunnels manually. Your Kali VM lives behind NAT on an isolated lab network, but it reaches out to the bot on its own, and everything just works.
 
@@ -8,7 +8,7 @@ The whole setup is designed so you never have to mess with IP addresses, open in
 
 ## How the Pieces Fit Together
 
-There are two main components. The bot runs on Koyeb's free tier — it's the Discord-facing part that handles slash commands, talks to the AI models, and routes commands to your VM. The agent is a Rust binary that runs on your Kali machine. It's the muscle — it executes OVT commands, takes screenshots, monitors system health, and reports back.
+There are two main components. The bot runs on Koyeb's free tier - it's the Discord-facing part that handles slash commands, talks to the AI models, and routes commands to your VM. The agent is a Rust binary that runs on your Kali machine. It's the muscle - it executes OVT commands, takes screenshots, monitors system health, and reports back.
 
 The bot used to run separate servers for healthchecks and WebSocket connections, but we merged everything onto a single port 8000. One port handles Koyeb's liveness probes, agent tunnel registration, and the WebSocket endpoint where agents connect. It makes deployment simpler and avoids the headache of Koyeb only exposing one port externally.
 
@@ -22,7 +22,7 @@ The agent itself is written in Rust and bundles a command executor that spawns O
 
 For text generation, the priority chain is NVIDIA NIM (Mistral Large 3 675B) first, then Cerebras (Qwen-3-235B), then Groq (Llama 4 Scout), then Gemini (2.5 Flash), then MiniMax, OpenAI, SambaNova, and finally Ollama for local inference. For image analysis, the same OpenAI-compatible providers are tried in order, with Gemini as the last resort.
 
-NVIDIA NIM is the star here — it's completely free, no credit card required, roughly 40 requests per minute with no token caps, and the Mistral Large 3 model handles both text and vision. You sign up at build.nvidia.com, get an `nvapi-...` key, and that single key unlocks both NVIDIA and MiniMax providers in the fallback chain. Groq with Llama 4 Scout handles vision tasks as a secondary option. Gemini sits behind both as a fallback.
+NVIDIA NIM is the star here - it's completely free, no credit card required, roughly 40 requests per minute with no token caps, and the Mistral Large 3 model handles both text and vision. You sign up at build.nvidia.com, get an `nvapi-...` key, and that single key unlocks both NVIDIA and MiniMax providers in the fallback chain. Groq with Llama 4 Scout handles vision tasks as a secondary option. Gemini sits behind both as a fallback.
 
 The system prompt that powers the AI mentor is around 379 lines and covers Active Directory enumeration and attacks (kerberoasting, AS-REP roasting, ACL abuse, DCSync, delegation, ADCS ESC1-ESC13, Group Policy, trusts, forest attacks), web and application pentesting (OWASP Top 10, SQLi, XSS, SSRF, deserialization, JWT, OAuth, SSTI, GraphQL), bug bounty methodology (recon pipeline, subdomain enumeration, platform-specific triage, report writing for max payout), cloud pentesting (AWS IAM, S3, Azure AD, GCP), mobile testing (Android Frida, iOS Objection), CTF categories (RE, crypto, stego, forensics, PWN, Z3), and a comprehensive tool ecosystem reference.
 
@@ -32,7 +32,7 @@ The system prompt that powers the AI mentor is around 379 lines and covers Activ
 
 The bot has commands organized into a few categories. Agent commands let you register your Kali VM and generate a per-agent token, connect or disconnect it, and check its status. Session commands start a dedicated thread where all your command output appears, let you chat with the AI, and save everything for later review.
 
-Attack commands run OVT operations directly on your VM — full AD enumeration, kerberoasting, password spraying with automatic lockout policy checks, ADCS vulnerability scanning, DCSync, hash cracking, and attack path graphing from BloodHound data. There's a live streaming mode that shows output line by line as it comes in.
+Attack commands run OVT operations directly on your VM - full AD enumeration, kerberoasting, password spraying with automatic lockout policy checks, ADCS vulnerability scanning, DCSync, hash cracking, and attack path graphing from BloodHound data. There's a live streaming mode that shows output line by line as it comes in.
 
 Monitoring commands check VM health stats, browse and read loot files, take screenshots with optional AI vision analysis, and open URLs in the VM browser. AI and analysis commands let you ask questions about AD pentesting, paste command output for automatic review, get the next best move suggested, review your session for mistakes, analyze attack paths, and run BloodHound JSON analysis. Utility commands search the web for vulnerabilities, look up CVEs by Windows Server version, fetch web pages, and review event logs.
 
@@ -40,7 +40,7 @@ Monitoring commands check VM health stats, browse and read loot files, take scre
 
 ## Security
 
-Connections between the agent and bot use WSS with TLS encryption end to end. Each agent authenticates with a per-agent token generated by `/agent register` and validated against the database on connection. All agent interactions are ephemeral — only you see them. Destructive operations like DCSync, kerberoasting, and password spraying require an explicit button click confirmation before they execute. Process spawning uses argument arrays instead of shell strings, so there's no shell injection risk. A rate limiter caps requests at ten per second per user by default. Loot file reads block path traversal attempts. System-destructive shell commands like `rm -rf /` and `dd` are filtered behind a second confirmation layer. Surrogate characters in AI output are sanitized before they reach Discord to prevent JSON encoding crashes.
+Connections between the agent and bot use WSS with TLS encryption end to end. Each agent authenticates with a per-agent token generated by `/agent register` and validated against the database on connection. All agent interactions are ephemeral - only you see them. Destructive operations like DCSync, kerberoasting, and password spraying require an explicit button click confirmation before they execute. Process spawning uses argument arrays instead of shell strings, so there's no shell injection risk. A rate limiter caps requests at ten per second per user by default. Loot file reads block path traversal attempts. System-destructive shell commands like `rm -rf /` and `dd` are filtered behind a second confirmation layer. Surrogate characters in AI output are sanitized before they reach Discord to prevent JSON encoding crashes.
 
 ---
 

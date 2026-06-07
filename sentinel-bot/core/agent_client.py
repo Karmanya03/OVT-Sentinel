@@ -123,6 +123,22 @@ class AgentClient:
 
         self._request_queues.pop(request_id, None)
 
+    async def run_shell_command(self, command: str) -> AsyncGenerator[AgentMessage, None]:
+        await self.ensure_connected()
+        request_id = f"req-{uuid.uuid4()}"
+        self.last_request_id = request_id
+        q: asyncio.Queue = asyncio.Queue()
+        self._request_queues[request_id] = q
+        await self._send(make_bot_message("run_shell_command", request_id=request_id, command=command))
+
+        while True:
+            msg = await q.get()
+            yield msg
+            if msg.type in ("command_complete", "command_killed", "error"):
+                break
+
+        self._request_queues.pop(request_id, None)
+
     async def kill_command(self, request_id: str) -> None:
         await self.ensure_connected()
         await self._send(make_bot_message("kill_command", request_id=request_id))

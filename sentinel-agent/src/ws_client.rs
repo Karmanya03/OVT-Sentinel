@@ -96,6 +96,37 @@ pub async fn connect_to_bot(
                         }
                     });
                 }
+                Ok(BotMessage::RunShellCommand {
+                    request_id,
+                    command,
+                    timeout_secs,
+                }) => {
+                    let tx = ws_tx.clone();
+                    let req = request_id.clone();
+                    let mut rx = match executor
+                        .spawn_shell_command(request_id.clone(), command, timeout_secs)
+                        .await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            let err = AgentMessage::Error {
+                                message: format!("shell spawn error: {}", e),
+                                request_id: Some(req),
+                            };
+                            let s = serde_json::to_string(&err)?;
+                            tx.lock().await.send(Message::Text(s.into())).await?;
+                            continue;
+                        }
+                    };
+
+                    tokio::spawn(async move {
+                        while let Some(msg) = rx.recv().await {
+                            if let Ok(s) = serde_json::to_string(&msg) {
+                                let _ = tx.lock().await.send(Message::Text(s.into())).await;
+                            }
+                        }
+                    });
+                }
                 Ok(BotMessage::KillCommand { request_id }) => {
                     let killed = executor.kill(&request_id).await.unwrap_or(false);
                     if killed {

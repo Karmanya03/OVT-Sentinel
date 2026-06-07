@@ -113,6 +113,28 @@ async def _run_ovt_command_raw(command: str) -> str:
     return "\n".join(output_lines[-100:])
 
 
+async def _run_shell_command_raw(command: str) -> str:
+    sanitize_err = _sanitize_shell(command)
+    if sanitize_err:
+        return sanitize_err
+    client, err = await _resolve_agent_client()
+    if err:
+        return err
+    output_lines = []
+    try:
+        async for msg in client.run_shell_command(command):
+            if hasattr(msg, "type"):
+                if msg.type == "command_output":
+                    output_lines.append(msg.payload.get("data", ""))
+                elif msg.type == "command_complete":
+                    break
+                elif msg.type == "error":
+                    return f"Agent error: {msg.payload.get('message')}"
+    except Exception as e:
+        return f"Error running command: {e}"
+    return "\n".join(output_lines[-100:])
+
+
 def _build_session_target() -> dict:
     return {"dc": "", "domain": "", "username": "", "password": ""}
 
@@ -217,7 +239,7 @@ def build_langchain_tools() -> list:
                 "Once confirmed, use run_bash_command_confirmed with the same command."
             )
 
-        return await _run_ovt_command_raw(command)
+        return await _run_shell_command_raw(command)
 
     @tool
     async def run_bash_command_confirmed(
@@ -227,7 +249,7 @@ def build_langchain_tools() -> list:
         check = _sanitize_shell(command)
         if check:
             return check
-        return await _run_ovt_command_raw(command)
+        return await _run_shell_command_raw(command)
 
     @tool
     async def list_loot_files() -> str:

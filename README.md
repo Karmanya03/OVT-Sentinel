@@ -181,7 +181,7 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 | **Session** | `/session-start` | Start a session in a dedicated thread |
 | | `/session-end` | End session & archive thread |
 | | `/resume` | Resume session in current thread |
-| | `/chat <message>` | Chat with the AI |
+| | `/chat <message>` | Chat with the AI — agentically runs OVT/bash commands on your VM |
 | | `/set <dc> <domain> <user> <pass>` | Set session targets (ephemeral) |
 | | `/session` | Show session summary |
 | **Attack** | `/run <command>` | Run any OVT command |
@@ -199,7 +199,7 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 | | `/readloot <path>` | Read a loot file |
 | | `/screenshot [analyze]` | Screenshot with optional AI vision |
 | | `/browse <url>` | Open URL in VM browser |
-| **AI** | `/ask <question>` | Ask about AD pentesting |
+| **AI** | `/ask <question>` | Ask the AI anything — it can run OVT + bash commands on your VM |
 | | `/analyze <cmd> <output>` | Paste OVT output for AI review |
 | | `/suggest` | AI suggests the next best move |
 | | `/mistakes` | AI critiques your session |
@@ -289,7 +289,7 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 - **OVT command execution** — run Overthrone attacks from Discord
 - **Live streaming** — see command output in real-time
 - **Thread-based sessions** — dedicated workspace per session
-- **AI chat + analysis** — multi-provider LLM with agentic tool calling
+- **AI chat + analysis** — multi-provider LLM with agentic tool calling (runs OVT + arbitrary bash commands on your VM)
 - **VM monitoring** — CPU, RAM, disk, processes from Discord
 - **Loot management** — browse, read, and analyze collected files
 - **Screenshots + browser** — see what's on the VM screen
