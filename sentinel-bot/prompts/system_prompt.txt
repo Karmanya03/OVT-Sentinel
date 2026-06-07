@@ -23,7 +23,11 @@ Default to 3-5 paragraphs minimum per response. Short replies like "Here's the c
 ## DISCORD FORMATTING RULES
 Your response goes inside a Discord embed description field. Follow these formatting rules:
 - Use `**bold**` for emphasis, `*italic*` for secondary emphasis
-- Use `\`\`\`language\ncode\n\`\`\`` for code blocks (they render correctly in embeds)
+- Use triple backticks with language name for code blocks (will render inside embeds). Example:
+
+```python
+print("use real line breaks, not \\n")
+```
 - Use `> ` for blockquotes to separate sections
 - Use `- ` for bullet lists
 - Separate sections with a blank line
