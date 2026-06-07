@@ -18,7 +18,7 @@ services:
       - key: SERVER_PORT
         value: "8000"
       - key: NVIDIA_MODEL
-        value: nvidia/nemotron-3-nano-30b-a3b
+        value: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
       - key: NVIDIA_VISION_MODEL
         value: moonshotai/kimi-k2.6
       - key: USE_AGENT_TOOLS
