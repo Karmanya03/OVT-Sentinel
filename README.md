@@ -310,7 +310,7 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 
 | Provider | API Key Env Var | Default Model | Use For | Free Tier / Limits |
 |----------|----------------|---------------|---------|-------------------|
-| **NVIDIA NIM (Text)** ⭐ | `NVIDIA_API_KEY` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Text generation (primary) | 30B MoE (3B active), omni-modal (text+images+video+speech), free trial |
+| **NVIDIA NIM (Text)** ⭐ | `NVIDIA_API_KEY` | `nvidia/nemotron-3-ultra-550b-a55b` | Text generation (primary) | 550B MoE (55B active), NVIDIA's own model, free trial |
 | **NVIDIA NIM (Vision)** ⭐ | `NVIDIA_API_KEY` | `moonshotai/kimi-k2.6` | Vision / Image analysis | 1T MoE (32B active), multimodal (text+images+video) |
 | **Cerebras** | `CEREBRAS_API_KEY` | `gpt-oss-120b` | Text fallback | Free, rate-limited |
 | **Groq** | `GROQ_API_KEY` | `meta-llama/llama-4-scout-17b-16e-instruct` | Text + Vision fallback | 30 req/min, supports images |

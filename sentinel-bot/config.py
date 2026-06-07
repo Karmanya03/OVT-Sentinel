@@ -34,7 +34,7 @@ class Settings:
     openai_model: str = "gpt-4o-mini"
 
     nvidia_api_key: Optional[str] = None
-    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nvidia_model: str = "nvidia/nemotron-3-ultra-550b-a55b"
     nvidia_vision_model: str = "moonshotai/kimi-k2.6"
     nvidia_vision_model_fallback: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
@@ -173,7 +173,7 @@ def load_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         nvidia_api_key=os.getenv("NVIDIA_API_KEY"),
-        nvidia_model=os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
+        nvidia_model=os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b"),
         nvidia_vision_model=os.getenv("NVIDIA_VISION_MODEL", "moonshotai/kimi-k2.6"),
         nvidia_vision_model_fallback=os.getenv("NVIDIA_VISION_MODEL_FALLBACK", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
         nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
