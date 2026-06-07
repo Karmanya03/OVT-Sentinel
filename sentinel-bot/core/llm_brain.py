@@ -244,7 +244,11 @@ class LLMBrain:
         return client, tools_bundle
 
     def _init_groq(self):
-        from langchain_groq import ChatGroq
+        try:
+            from langchain_groq import ChatGroq
+        except ImportError:
+            log.warning("langchain-groq not installed, install with: pip install langchain-groq")
+            return None
         llm = ChatGroq(
             model=self.config.groq_model,
             temperature=0.2,
