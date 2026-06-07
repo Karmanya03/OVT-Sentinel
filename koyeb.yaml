@@ -20,7 +20,7 @@ services:
       - key: NVIDIA_MODEL
         value: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
       - key: NVIDIA_UNCENSORED_MODEL
-        value: deepseek-ai/deepseek-v4-flash
+        value: minimaxai/minimax-m2.7
       - key: NVIDIA_VISION_MODEL
         value: moonshotai/kimi-k2.6
       - key: USE_AGENT_TOOLS

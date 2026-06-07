@@ -222,6 +222,7 @@ class SessionCog(commands.Cog):
             interaction,
             lambda: self.llm.chat_unsafe(session_id, str(interaction.user.id), prompt),
             "exploit response",
+            timeout=180.0,
         )
         if response is None:
             return
