@@ -18,7 +18,7 @@ services:
       - key: SERVER_PORT
         value: "8000"
       - key: NVIDIA_MODEL
-        value: google/gemma-4-31b-it
+        value: nvidia/nemotron-3-nano-30b-a3b
       - key: NVIDIA_VISION_MODEL
         value: moonshotai/kimi-k2.6
       - key: USE_AGENT_TOOLS
