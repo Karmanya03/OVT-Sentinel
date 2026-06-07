@@ -34,7 +34,8 @@ class Settings:
     openai_model: str = "gpt-4o-mini"
 
     nvidia_api_key: Optional[str] = None
-    nvidia_model: str = "nvidia/nemotron-3-ultra-550b-a55b"
+    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nvidia_uncensored_model: str = "nvidia/nemotron-3-ultra-550b-a55b"
     nvidia_vision_model: str = "moonshotai/kimi-k2.6"
     nvidia_vision_model_fallback: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
@@ -56,7 +57,7 @@ class Settings:
     bot_public_url: str = ""
     agent_ws_port: int = 8002
 
-    PROVIDER_PRIORITY = ["nvidia", "cerebras", "groq", "minimax", "openai", "mistral", "sambanova", "ollama"]
+    PROVIDER_PRIORITY = ["nvidia", "nvidia-uncensored", "cerebras", "groq", "minimax", "openai", "mistral", "sambanova", "ollama"]
 
     def provider_candidates(self) -> list[str]:
         key_map = {
@@ -66,6 +67,7 @@ class Settings:
             "sambanova": self.sambanova_api_key,
             "cerebras": self.cerebras_api_key,
             "nvidia": self.nvidia_api_key,
+            "nvidia-uncensored": self.nvidia_api_key,
             "minimax": self.nvidia_api_key,
             "ollama": self.ollama_base_url if (self._ollama_enabled() or self.llm_provider.strip().lower() == "ollama") else None,
         }
@@ -173,7 +175,8 @@ def load_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         nvidia_api_key=os.getenv("NVIDIA_API_KEY"),
-        nvidia_model=os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b"),
+        nvidia_model=os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
+        nvidia_uncensored_model=os.getenv("NVIDIA_UNCENSORED_MODEL", "nvidia/nemotron-3-ultra-550b-a55b"),
         nvidia_vision_model=os.getenv("NVIDIA_VISION_MODEL", "moonshotai/kimi-k2.6"),
         nvidia_vision_model_fallback=os.getenv("NVIDIA_VISION_MODEL_FALLBACK", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
         nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),

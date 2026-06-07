@@ -310,7 +310,8 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 
 | Provider | API Key Env Var | Default Model | Use For | Free Tier / Limits |
 |----------|----------------|---------------|---------|-------------------|
-| **NVIDIA NIM (Text)** ⭐ | `NVIDIA_API_KEY` | `nvidia/nemotron-3-ultra-550b-a55b` | Text generation (primary) | 550B MoE (55B active), NVIDIA's own model, free trial |
+| **NVIDIA NIM (Text)** ⭐ | `NVIDIA_API_KEY` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Text generation (primary) | 30B MoE (3B active), omni-modal (text+images+video+speech), fast & free |
+| **NVIDIA NIM (Uncensored)** 🔞 | `NVIDIA_API_KEY` | `nvidia/nemotron-3-ultra-550b-a55b` | Fallback for unfiltered content | 550B MoE (55B active), NVIDIA's own model, fewer guardrails |
 | **NVIDIA NIM (Vision)** ⭐ | `NVIDIA_API_KEY` | `moonshotai/kimi-k2.6` | Vision / Image analysis | 1T MoE (32B active), multimodal (text+images+video) |
 | **Cerebras** | `CEREBRAS_API_KEY` | `gpt-oss-120b` | Text fallback | Free, rate-limited |
 | **Groq** | `GROQ_API_KEY` | `meta-llama/llama-4-scout-17b-16e-instruct` | Text + Vision fallback | 30 req/min, supports images |
@@ -319,12 +320,12 @@ In `both` mode, eth0 is the default route (internet) and eth2 has `never-default
 | **SambaNova** | `SAMBANOVA_API_KEY` | `Meta-Llama-3.1-70B-Instruct` | Text fallback | Free, rate-limited |
 | **Ollama** (local) | — | `llama3.1:70b` | Text fallback | Free, local |
 
-**Priority chain for text:** NVIDIA (nemotron-3-ultra) → Cerebras → Groq → MiniMax → OpenAI → SambaNova → Ollama
+**Priority chain for text:** NVIDIA (nemotron-3-nano-omni) → NVIDIA Uncensored (nemotron-3-ultra) → Cerebras → Groq → MiniMax → OpenAI → SambaNova → Ollama
 **Priority chain for images:** NVIDIA (kimi-k2.6) → Groq → others
 
 Multiple providers auto-chain as fallback. No need to set `LLM_PROVIDER` — just add API keys. NVIDIA handles both text and vision.
 
-**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks multiple models: **Nemotron-3-Ultra 550B** (text), **Kimi K2.6 1T** (vision), and **MiniMax M2.7** — all chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
+**NVIDIA NIM details**: Sign up free at [build.nvidia.com](https://build.nvidia.com) (no credit card). Get an `nvapi-...` key. This single key unlocks multiple models: **Nemotron-3-Nano-Omni 30B** (fast text), **Nemotron-3-Ultra 550B** (uncensored fallback), **Kimi K2.6 1T** (vision), and **MiniMax M2.7** — all chain automatically. 100+ models available. **Only limit is ~40 requests/minute** — no token/credit caps. Can request 200 RPM upgrade. OpenAI-compatible API.
 
 ### Quick Koyeb Env Example
 
@@ -335,7 +336,8 @@ SERVER_PORT=8000
 BOT_PUBLIC_URL=https://your-app.koyeb.app
 SENTINEL_TOKEN=...
 NVIDIA_API_KEY=nvapi-...
-NVIDIA_MODEL=nvidia/nemotron-3-ultra-550b-a55b
+NVIDIA_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+NVIDIA_UNCENSORED_MODEL=nvidia/nemotron-3-ultra-550b-a55b
 NVIDIA_VISION_MODEL=moonshotai/kimi-k2.6
 CEREBRAS_API_KEY=csk_...
 ```

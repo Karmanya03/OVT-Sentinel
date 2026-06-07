@@ -153,6 +153,13 @@ class LLMBrain:
                 model=self.config.nvidia_model,
                 label="NVIDIA",
             )
+        elif provider == "nvidia-uncensored" and self.config.nvidia_api_key:
+            return self._init_openai_compat(
+                base_url=self.config.nvidia_base_url,
+                api_key=self.config.nvidia_api_key,
+                model=self.config.nvidia_uncensored_model,
+                label="NVIDIA Uncensored",
+            )
         elif provider == "minimax" and self.config.nvidia_api_key:
             return self._init_openai_compat(
                 base_url=self.config.nvidia_base_url,
